@@ -28,7 +28,8 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="station">Agentenstation</button>
+  <button class="tab active" data-tab="bunker">🛡 Bunker</button>
+  <button class="tab" data-tab="station">Agentenstation</button>
   <button class="tab" data-tab="videos">Videos <span class="badge" id="badgeApproval" hidden>0</span></button>
   <button class="tab" data-tab="ideas">Ideen</button>
   <button class="tab" data-tab="settings">Einstellungen</button>
@@ -36,7 +37,11 @@
 
 <main>
   <!-- ============ STATION ============ -->
-  <section id="tab-station" class="tab-panel active">
+  <section id="tab-bunker" class="tab-panel active">
+    <div class="bunker" id="bunker"></div>
+  </section>
+
+  <section id="tab-station" class="tab-panel">
     <div class="kpis">
       <div class="kpi"><div class="kpi-v" id="kIdeas">–</div><div class="kpi-l">Ideen im Speicher</div></div>
       <div class="kpi"><div class="kpi-v" id="kProd">–</div><div class="kpi-l">In Produktion</div></div>
@@ -111,6 +116,7 @@
 </dialog>
 
 <div class="toasts" id="toasts"></div>
+<script src="/static/bunker.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

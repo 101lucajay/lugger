@@ -6,6 +6,17 @@ Untertiteln und lädt sie nach deiner Freigabe auf **TikTok, Instagram Reels und
 
 Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im Dashboard änderbar).
 
+## Der Bunker (Live-Ansicht)
+
+Der Tab **🛡 Bunker** zeigt die Basis von oben: Jede Abteilung ist ein Raum (Trend-Radar, Leitstand,
+Schreibstube, Tonstudio, Bildarchiv, Schnittraum, Freigabe-Schleuse, Sendezentrale) und jeder Agent
+ist eine Figur. Die Figuren arbeiten an ihrem Platz und **tragen jedes Video als Filmrolle durch den
+Korridor in die nächste Abteilung**. Freigegebene Videos fliegen durch den Uplink an die Oberfläche.
+
+- Mausrad = zoomen, ziehen = verschieben, ⛶ = Vollbild
+- Klick auf eine Figur öffnet Status und Steuerung (Pause, Ausführen) des Agenten
+- Klick auf eine Filmrolle oder die blinkende Freigabe-Schleuse öffnet das Video zur Prüfung
+
 ## Die Agentenstation
 
 | Agent | Aufgabe |

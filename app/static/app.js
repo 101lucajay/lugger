@@ -50,12 +50,21 @@ function elapsed(ts) {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+// ---------------- bunker (live base view) ----------------
+Bunker.init($("#bunker"), {
+  getAgents: () => state.agents,
+  getStats: () => state.stats,
+  openVideo: (id) => openVideo(id),
+  agentAction: (key, action) => api(`/api/agents/${key}/${action}`, { body: {} }).then(updateAgent),
+});
+
 // ---------------- tabs ----------------
 $$(".tab").forEach((b) => b.addEventListener("click", () => {
   $$(".tab").forEach((t) => t.classList.toggle("active", t === b));
   $$(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
   if (b.dataset.tab === "settings" && !state.settings) loadSettings();
   if (b.dataset.tab === "ideas") loadIdeas();
+  b.dataset.tab === "bunker" ? Bunker.start() : Bunker.stop();
   location.hash = b.dataset.tab;
 }));
 if (location.hash) $(`.tab[data-tab="${location.hash.slice(1)}"]`)?.click();
@@ -207,7 +216,9 @@ async function videoAction(id, act) {
 
 function upsertVideo(v) {
   if (!v) return;
+  const prev = state.videos.get(v.id);
   state.videos.set(v.id, v);
+  Bunker.video(v, prev);
   renderBoard(); renderVideos();
   if ($("#videoModal").open && +$("#videoModal").dataset.vid === v.id && !$("#videoModal").dataset.editing) openVideo(v.id, true);
 }
@@ -408,7 +419,7 @@ function connect() {
     if (type === "agent") updateAgent(data);
     else if (type === "log") { if (data.ts) appendLog(data); }
     else if (type === "video") { upsertVideo(data); refreshState(); }
-    else if (type === "video_deleted") { state.videos.delete(data.id); renderBoard(); renderVideos(); refreshState(); }
+    else if (type === "video_deleted") { state.videos.delete(data.id); Bunker.deleted(data.id); renderBoard(); renderVideos(); refreshState(); }
     else if (type === "ideas") { refreshState(); if ($("#tab-ideas").classList.contains("active")) loadIdeas(); }
     else if (type === "notify") toast(data.title, data.message);
   };
@@ -418,6 +429,8 @@ function connect() {
   const [s, vids] = await Promise.all([api("/api/state"), api("/api/videos")]);
   applyState(s);
   vids.forEach((v) => state.videos.set(v.id, v));
+  Bunker.loadVideos(vids);
+  if ($("#tab-bunker").classList.contains("active")) Bunker.start();
   renderBoard(); renderVideos();
   await loadLogs();
   connect();
