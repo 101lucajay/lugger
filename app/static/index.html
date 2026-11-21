@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lugger · Agenten-Zentrale</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">◆</span>
+    <div>
+      <div class="brand-name">LUGGER</div>
+      <div class="brand-sub">Agenten-Zentrale</div>
+    </div>
+  </div>
+  <div class="niche" id="niche" title="Branche / Nische">–</div>
+  <div class="top-actions">
+    <span class="live" id="live"><i></i><span>offline</span></span>
+    <label class="switch" title="Autopilot: Ideen finden & nach Zeitplan produzieren">
+      <input type="checkbox" id="autopilot"><span class="slider"></span><span class="switch-label">Autopilot</span>
+    </label>
+    <button class="btn primary" id="produceNow">▶ Jetzt produzieren</button>
+    <a class="btn ghost" href="/logout" id="logout" hidden>Abmelden</a>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="station">Agentenstation</button>
+  <button class="tab" data-tab="videos">Videos <span class="badge" id="badgeApproval" hidden>0</span></button>
+  <button class="tab" data-tab="ideas">Ideen</button>
+  <button class="tab" data-tab="settings">Einstellungen</button>
+</nav>
+
+<main>
+  <!-- ============ STATION ============ -->
+  <section id="tab-station" class="tab-panel active">
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-v" id="kIdeas">–</div><div class="kpi-l">Ideen im Speicher</div></div>
+      <div class="kpi"><div class="kpi-v" id="kProd">–</div><div class="kpi-l">In Produktion</div></div>
+      <div class="kpi warn"><div class="kpi-v" id="kApproval">–</div><div class="kpi-l">Warten auf Freigabe</div></div>
+      <div class="kpi ok"><div class="kpi-v" id="kPublished">–</div><div class="kpi-l">Veröffentlicht</div></div>
+      <div class="kpi"><div class="kpi-v small" id="kNext">–</div><div class="kpi-l">Nächste Produktion</div></div>
+    </div>
+
+    <div class="section-head">
+      <h2>Agenten live</h2>
+      <div class="row gap">
+        <button class="btn small ghost" data-all="pause">⏸ Alle pausieren</button>
+        <button class="btn small ghost" data-all="resume">▶ Alle starten</button>
+      </div>
+    </div>
+    <div class="agents" id="agents"></div>
+
+    <div class="split">
+      <div class="panel">
+        <div class="section-head"><h2>Produktionsband</h2></div>
+        <div class="board" id="board"></div>
+      </div>
+      <div class="panel">
+        <div class="section-head">
+          <h2>Live-Protokoll</h2>
+          <select id="logFilter" class="small-select"><option value="">Alle Agenten</option></select>
+        </div>
+        <div class="terminal" id="terminal"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VIDEOS ============ -->
+  <section id="tab-videos" class="tab-panel">
+    <div class="section-head">
+      <h2>Videos</h2>
+      <div class="row gap">
+        <select id="videoFilter" class="small-select">
+          <option value="">Alle</option>
+          <option value="awaiting_approval">Warten auf Freigabe</option>
+          <option value="production">In Produktion</option>
+          <option value="published">Veröffentlicht</option>
+          <option value="failed">Fehler</option>
+        </select>
+      </div>
+    </div>
+    <div class="video-grid" id="videoGrid"></div>
+  </section>
+
+  <!-- ============ IDEAS ============ -->
+  <section id="tab-ideas" class="tab-panel">
+    <div class="section-head">
+      <h2>Videoideen</h2>
+      <button class="btn small" id="scoutNow">🔭 Neue Ideen suchen</button>
+    </div>
+    <form class="idea-form panel" id="ideaForm">
+      <input name="title" placeholder="Eigene Idee / Thema, z. B. „Wie funktioniert ChatGPT wirklich?“" required>
+      <input name="angle" placeholder="Blickwinkel (optional)">
+      <button class="btn primary" type="submit">Hinzufügen</button>
+    </form>
+    <div class="idea-list" id="ideaList"></div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="tab-settings" class="tab-panel">
+    <form id="settingsForm" class="settings"></form>
+  </section>
+</main>
+
+<dialog id="videoModal" class="modal">
+  <div class="modal-body" id="videoModalBody"></div>
+</dialog>
+
+<div class="toasts" id="toasts"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
