@@ -88,7 +88,8 @@ class TrendScout(Agent):
         if not config.get("autopilot"):
             return None
         backlog = len(db.list_ideas("new"))
-        if backlog < config.get("min_idea_backlog") and time.time() - self._last_run > self.auto_cooldown:
+        cooldown = max(5, config.get("scout_interval_minutes")) * 60
+        if backlog < config.get("min_idea_backlog") and time.time() - self._last_run > cooldown:
             return {"reason": f"nur {backlog} Ideen im Speicher"}
         return None
 

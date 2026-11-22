@@ -6,16 +6,39 @@ Untertiteln und lädt sie nach deiner Freigabe auf **TikTok, Instagram Reels und
 
 Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im Dashboard änderbar).
 
+## Das Dashboard
+
+Links in der Seitenleiste findest du alle Bereiche:
+
+- **Übersicht**: Kennzahlen, Produktion der letzten 14 Tage, Pipeline, Status der Agenten, die nächsten Termine, zuletzt produzierte Videos und die Plattformen.
+- **Bunker**: die Live-Ansicht der Basis (siehe unten).
+- **Videos** und **Ideen**: prüfen, freigeben, bearbeiten, eigene Themen hinzufügen.
+- **Automatisierung**: Autopilot, Zeitplan (Videos pro Tag, Uhrzeiten, Wochentage, Zeitzone), Freigabe-Modus, Ideenvorrat, Trend-Scout-Intervall, Videolänge, Upload-Weg pro Plattform und jeden Agenten einzeln an oder aus. Jede Änderung wird sofort gespeichert.
+- **Protokoll** und **Einstellungen**: alle Agenten-Logs sowie API-Schlüssel und Zugangsdaten.
+
+Das Design folgt dem System: hell oder dunkel, umschaltbar unten in der Seitenleiste.
+
 ## Der Bunker (Live-Ansicht)
 
-Der Tab **🛡 Bunker** zeigt die Basis von oben: Jede Abteilung ist ein Raum (Trend-Radar, Leitstand,
-Schreibstube, Tonstudio, Bildarchiv, Schnittraum, Freigabe-Schleuse, Sendezentrale) und jeder Agent
-ist eine Figur. Die Figuren arbeiten an ihrem Platz und **tragen jedes Video als Filmrolle durch den
-Korridor in die nächste Abteilung**. Freigegebene Videos fliegen durch den Uplink an die Oberfläche.
+Die Basis hat drei unterirdische Etagen, die ein Aufzug verbindet:
 
-- Mausrad = zoomen, ziehen = verschieben, ⛶ = Vollbild
-- Klick auf eine Figur öffnet Status und Steuerung (Pause, Ausführen) des Agenten
-- Klick auf eine Filmrolle oder die blinkende Freigabe-Schleuse öffnet das Video zur Prüfung
+| Etage | Abteilungen |
+|---|---|
+| −1 Kommando | Trend-Radar, Leitstand, Freigabe, Sendezentrale (Uplink an die Oberfläche) |
+| −2 Kreativ | Schreibstube, Tonstudio, Bildarchiv, Lounge |
+| −3 Technik | Schnittraum, Render-Farm, Serverraum, Energie |
+
+Unter **Alle Ebenen** siehst du das Gebäude als gestapelten 3D-Schnitt. Ein Klick auf eine Etage zeigt
+ihren Grundriss von oben. Die Agenten arbeiten an ihrem Platz und tragen jedes Video als Kachel in die
+nächste Abteilung, wenn nötig mit dem Aufzug auf eine andere Etage. Freigegebene Videos fliegen durch
+den Uplink nach oben.
+
+- Mausrad = zoomen, ziehen = verschieben, Vollbild über das Symbol oben rechts
+- Klick auf einen Agenten: Status, Aufgabe, Pause/Ausführen
+- Klick auf eine Video-Kachel oder die orange blinkende Freigabe öffnet das Video
+
+**Demo ohne Server:** `python tools/build_demo.py demo.html` erzeugt eine eigenständige Seite, die die
+ganze Zentrale mit simulierten Agenten zeigt.
 
 ## Die Agentenstation
 

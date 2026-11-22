@@ -19,6 +19,8 @@ SETTINGS_SPEC: dict[str, tuple[Any, type, bool, str]] = {
     "autopilot": (True, bool, False, "LUGGER_AUTOPILOT"),
     "videos_per_day": (1, int, False, "LUGGER_VIDEOS_PER_DAY"),
     "schedule_times": ("17:00", str, False, "LUGGER_SCHEDULE_TIMES"),
+    "schedule_days": ("1,2,3,4,5,6,7", str, False, "LUGGER_SCHEDULE_DAYS"),  # 1=Mo … 7=So
+    "scout_interval_minutes": (30, int, False, "LUGGER_SCOUT_INTERVAL"),
     "timezone": ("Europe/Berlin", str, False, "TZ"),
     "require_approval": (True, bool, False, "LUGGER_REQUIRE_APPROVAL"),
     "min_idea_backlog": (6, int, False, "LUGGER_MIN_IDEA_BACKLOG"),
@@ -118,3 +120,15 @@ def schedule_times() -> list[tuple[int, int]]:
         except ValueError:
             continue
     return sorted(times) or [(17, 0)]
+
+
+def schedule_days() -> set[int]:
+    days = set()
+    for part in str(get("schedule_days")).replace(";", ",").split(","):
+        try:
+            d = int(part.strip())
+            if 1 <= d <= 7:
+                days.add(d)
+        except ValueError:
+            continue
+    return days

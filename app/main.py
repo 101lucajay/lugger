@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config, db
 from .agents import registry
 from .agents.base import AgentError
-from .agents.producer import next_slot, start_production
+from .agents.producer import next_slot, start_production, upcoming_slots
 from .events import bus
 from .paths import STATIC_DIR, VIDEOS_DIR, video_dir
 from .publishers.platforms import enabled_platforms
@@ -119,6 +119,7 @@ async def state():
     return {"agents": [a.state() for a in registry.AGENTS], "stats": stats(),
             "autopilot": config.get("autopilot"), "require_approval": config.get("require_approval"),
             "niche": config.get("niche"), "next_slot": slot.isoformat() if slot else None,
+            "upcoming": [s.isoformat() for s in upcoming_slots(6)] if config.get("autopilot") else [],
             "platforms": enabled_platforms(), "auth": bool(PASSWORD)}
 
 

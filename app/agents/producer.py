@@ -30,22 +30,34 @@ def _tz() -> ZoneInfo:
         return ZoneInfo("Europe/Berlin")
 
 
-def next_slot() -> dt.datetime | None:
+def upcoming_slots(n: int = 5) -> list[dt.datetime]:
+    """Next `n` production slots, respecting times, weekdays and already-fired slots."""
     tz = _tz()
     now = dt.datetime.now(tz)
     times = effective_times()
-    if not times:
-        return None
+    days = config.schedule_days()
+    if not times or not days:
+        return []
     last = db.get_setting_raw("producer_last_slot") or ""
-    for day in range(0, 3):
+    out = []
+    for day in range(0, 15):
         d = (now + dt.timedelta(days=day)).date()
+        if d.isoweekday() not in days:
+            continue
         for h, m in times:
             slot = dt.datetime(d.year, d.month, d.day, h, m, tzinfo=tz)
             if slot.strftime("%Y-%m-%d %H:%M") <= last:
                 continue
             if slot >= now - dt.timedelta(hours=3):
-                return slot
-    return None
+                out.append(slot)
+                if len(out) >= n:
+                    return out
+    return out
+
+
+def next_slot() -> dt.datetime | None:
+    slots = upcoming_slots(1)
+    return slots[0] if slots else None
 
 
 def start_production(idea_id: int | None = None, topic: str | None = None) -> int:

@@ -9,12 +9,12 @@
 <body class="login-body">
   <form class="login-card" method="post" action="/login">
     <div class="brand">
-      <span class="logo">◆</span>
-      <div><div class="brand-name">LUGGER</div><div class="brand-sub">Agenten-Zentrale</div></div>
+      <div class="brand-mark"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg></div>
+      <div><div class="brand-name">Lugger</div><div class="brand-sub">Agenten-Zentrale</div></div>
     </div>
-    <input type="password" name="password" placeholder="Passwort" autofocus required>
-    <button class="btn primary" type="submit">Anmelden</button>
-    <p class="err" id="err" hidden>Falsches Passwort.</p>
+    <input class="input" type="password" name="password" placeholder="Passwort" autofocus required>
+    <button class="btn primary" type="submit" style="justify-content:center">Anmelden</button>
+    <p class="err" id="err" hidden>Das Passwort stimmt nicht.</p>
   </form>
   <script>if (location.search.includes("error")) document.getElementById("err").hidden = false;</script>
 </body>

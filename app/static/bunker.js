@@ -1,101 +1,143 @@
-/* Lugger Bunker – top-down live view of the agent base.
- * Rooms = departments, characters = agents, film canisters = videos.
- * Driven by the live dashboard state (agents + video status changes). */
+/* Lugger Bunker – live view of the agent base on three underground floors.
+ * Floors: −1 Kommando, −2 Kreativ, −3 Technik, connected by an elevator.
+ * Views: "Alle Ebenen" (stacked cutaway) or a single floor plan from above.
+ * Agents are avatars that work at their desks and carry each video (a film tile)
+ * from department to department – including elevator rides between floors. */
 "use strict";
 (function () {
-  const W = 1800, H = 1000, CORR_Y = 480;
   const TAU = Math.PI * 2;
+  const FW = 1400, FH = 760;                 // one floor plan, local units
+  const CY = 380;                             // corridor centre line
+  const ELEV = { x: 1252, y: 292, w: 118, h: 176, door: { x: 1236, y: CY }, inn: { x: 1311, y: CY } };
+  const STACK = { a: 1, b: 0, c: 0.45, d: 0.42, gap: 400 };   // oblique cutaway
 
-  // ---------------- layout ----------------
-  const R = (key, name, x, y, color, top) => ({ key, name, x, y, w: 410, h: 360, color, top });
-  const ROOMS = [
-    R("radar", "Trend-Radar", 40, 40, "#4da3ff", true),
-    R("leit", "Leitstand", 470, 40, "#a78bfa", true),
-    R("script", "Schreibstube", 900, 40, "#ffd400", true),
-    R("audio", "Tonstudio", 1330, 40, "#ff5c6c", true),
-    R("send", "Sendezentrale", 40, 600, "#ff4fd8", false),
-    R("approve", "Freigabe-Schleuse", 470, 600, "#3ee6e6", false),
-    R("cut", "Schnittraum", 900, 600, "#ff9a3d", false),
-    R("archive", "Bildarchiv", 1330, 600, "#35d07f", false),
+  // ---------------- icons (24-grid strokes, shared with the dashboard) ----------------
+  const ICONS = {
+    trend_scout: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 12l6-6",
+    producer: "M4 10h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z M4 10l1-4.5 15 3-.6 1.5 M9.5 5.6l1.2 3.4 M14.5 6.6l1.2 3.4",
+    script_writer: "M16.5 3.5l4 4L8 20l-5 1 1-5z M14 6l4 4",
+    voice: "M9 5.5a3 3 0 0 1 6 0V11a3 3 0 0 1-6 0z M5.5 11a6.5 6.5 0 0 0 13 0 M12 17.5V21",
+    visuals: "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M8.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M21 15l-5-5L5 20",
+    editor: "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.2 7.8L20 19.5 M8.2 16.2L20 4.5",
+    publisher: "M21 3L10.5 13.5 M21 3l-6.5 18-4-7.5L3 9.5z",
+  };
+  const AGENT_COLOR = { trend_scout: "#0a84ff", producer: "#5e5ce6", script_writer: "#f5a700", voice: "#ff375f",
+    visuals: "#30b45a", editor: "#ff6a2b", publisher: "#bf5af2" };
+  const PATHS = {};
+  const path = (k) => (PATHS[k] ||= new Path2D(ICONS[k]));
+
+  // ---------------- building layout ----------------
+  const SLOT = { TL: [30, 30, true], TR: [640, 30, true], BL: [30, 430, false], BR: [640, 430, false] };
+  const FLOORS = [
+    { lvl: "−1", name: "Kommando", rooms: [["radar", "Trend-Radar", "Recherche", "TL", "#0a84ff"], ["leit", "Leitstand", "Planung", "TR", "#5e5ce6"],
+      ["send", "Sendezentrale", "Upload", "BL", "#bf5af2"], ["approve", "Freigabe", "Deine Prüfung", "BR", "#ff9500"]] },
+    { lvl: "−2", name: "Kreativ", rooms: [["script", "Schreibstube", "Skript", "TL", "#f5a700"], ["audio", "Tonstudio", "Stimme", "TR", "#ff375f"],
+      ["archive", "Bildarchiv", "Material", "BL", "#30b45a"], ["lounge", "Lounge", "Pause", "BR", "#64d2ff"]] },
+    { lvl: "−3", name: "Technik", rooms: [["cut", "Schnittraum", "Schnitt", "TL", "#ff6a2b"], ["farm", "Render-Farm", "Rendering", "TR", "#0a84ff"],
+      ["server", "Serverraum", "Infrastruktur", "BL", "#8e8e93"], ["power", "Energie", "Kühlung & Strom", "BR", "#ffcc00"]] },
   ];
-  const ROOM = Object.fromEntries(ROOMS.map((r) => [r.key, r]));
-  for (const r of ROOMS) {
-    r.door = { x: r.x + r.w / 2, y: r.top ? r.y + r.h : r.y };
-    r.doorIn = { x: r.door.x, y: r.door.y + (r.top ? -45 : 45) };
-    r.corr = { x: r.door.x, y: CORR_Y };
-  }
-  // agent homes (where they work) & package inboxes
+  const ROOM = {};
+  FLOORS.forEach((f, fi) => {
+    f.rooms = f.rooms.map(([key, name, sub, slot, color]) => {
+      const [x, y, top] = SLOT[slot];
+      const r = { key, name, sub, color, floor: fi, x, y, w: 590, h: 300, top };
+      r.door = { x: x + 295, y: top ? y + 300 : y };
+      r.doorIn = { x: r.door.x, y: r.door.y + (top ? -40 : 40) };
+      r.corr = { x: r.door.x, y: CY };
+      ROOM[key] = r;
+      return r;
+    });
+  });
+  const rel = (room, dx, dy) => ({ x: ROOM[room].x + dx, y: ROOM[room].y + dy });
   const HOME = {
-    trend_scout: { room: "radar", x: 40 + 300, y: 40 + 268 },
-    producer: { room: "leit", x: 470 + 205, y: 40 + 290 },
-    script_writer: { room: "script", x: 900 + 250, y: 40 + 222 },
-    voice: { room: "audio", x: 1330 + 112, y: 40 + 140 },
-    visuals: { room: "archive", x: 1330 + 300, y: 600 + 250 },
-    editor: { room: "cut", x: 900 + 205, y: 600 + 175 },
-    publisher: { room: "send", x: 40 + 300, y: 600 + 178 },
+    trend_scout: { room: "radar", ...rel("radar", 455, 248) },
+    producer: { room: "leit", ...rel("leit", 400, 205) },
+    script_writer: { room: "script", ...rel("script", 330, 212) },
+    voice: { room: "audio", ...rel("audio", 135, 165) },
+    visuals: { room: "archive", ...rel("archive", 445, 232) },
+    editor: { room: "cut", ...rel("cut", 295, 190) },
+    publisher: { room: "send", ...rel("send", 420, 200) },
   };
   const INBOX = {
-    radar: { x: 40 + 250, y: 40 + 170 }, leit: { x: 470 + 40, y: 40 + 300 },
-    script: { x: 900 + 40, y: 40 + 300 }, audio: { x: 1330 + 250, y: 40 + 300 },
-    archive: { x: 1330 + 40, y: 600 + 70 }, cut: { x: 900 + 40, y: 600 + 70 },
-    approve: { x: 470 + 120, y: 600 + 200 }, send: { x: 40 + 230, y: 600 + 70 },
+    radar: rel("radar", 262, 150), leit: rel("leit", 60, 236), send: rel("send", 60, 60), approve: rel("approve", 200, 148),
+    script: rel("script", 430, 246), audio: rel("audio", 430, 246), archive: rel("archive", 60, 62), cut: rel("cut", 60, 246),
   };
-  const AGENT_COLOR = {
-    trend_scout: "#4da3ff", producer: "#a78bfa", script_writer: "#ffd400", voice: "#ff5c6c",
-    visuals: "#35d07f", editor: "#ff9a3d", publisher: "#ff4fd8",
+  const STATUS_ROOM = { queued: "leit", scripting: "script", scripted: "script", voicing: "audio", voiced: "audio",
+    sourcing: "archive", visuals_ready: "archive", rendering: "cut", rendered: "cut", awaiting_approval: "approve",
+    rejected: "approve", approved: "send", publishing: "send", publish_failed: "send", published: "send", ready: "send" };
+  const CARRIER = { radar: "producer", leit: "producer", script: "script_writer", audio: "voice", archive: "visuals",
+    cut: "editor", approve: "publisher", send: "publisher" };
+  const ERROR_ROOM = { "Skript-Autor": "script", "Sprecher": "audio", "Bild-Redakteur": "archive", "Cutter": "cut", "Publisher": "send" };
+
+  // ---------------- theme ----------------
+  const PAL = {
+    light: { ground: "#e3e5ea", slab: "#f4f5f7", side: "#d5d8de", side2: "#c9ccd3", corr: "#eceef2", room: "#ffffff", wall: "#d4d7dd",
+      furn: "#f3f4f6", line: "rgba(0,0,0,.07)", shadow: "rgba(30,35,50,.13)", text: "#1d1d1f", text2: "#6e6e73", text3: "#a1a1a6",
+      glass: "rgba(255,255,255,.88)", glassLine: "rgba(0,0,0,.08)", screen: "#1c1c1e", screenText: "#e5e5ea", avatar: "#ffffff", flow: "rgba(0,111,255,.35)" },
+    dark: { ground: "#050506", slab: "#141416", side: "#0d0d0f", side2: "#09090a", corr: "#19191c", room: "#1f1f22", wall: "#38383c",
+      furn: "#2c2c30", line: "rgba(255,255,255,.07)", shadow: "rgba(0,0,0,.55)", text: "#f5f5f7", text2: "#a1a1a6", text3: "#6e6e73",
+      glass: "rgba(40,40,44,.9)", glassLine: "rgba(255,255,255,.1)", screen: "#0a0a0b", screenText: "#d1d1d6", avatar: "#2c2c2e", flow: "rgba(10,132,255,.45)" },
   };
-  const SKIN = { trend_scout: "#f1c27d", producer: "#c68642", script_writer: "#ffdbac", voice: "#e0ac69",
-    visuals: "#8d5524", editor: "#f1c27d", publisher: "#ffdbac" };
-  const STATUS_ROOM = {
-    queued: "leit", scripting: "script", scripted: "script", voicing: "audio", voiced: "audio",
-    sourcing: "archive", visuals_ready: "archive", rendering: "cut", rendered: "cut",
-    awaiting_approval: "approve", rejected: "approve", approved: "send", publishing: "send",
-    publish_failed: "send", published: "send", ready: "send",
-  };
-  // who carries a package out of a room
-  const CARRIER = { radar: "producer", leit: "producer", script: "script_writer", audio: "voice",
-    archive: "visuals", cut: "editor", approve: "publisher", send: "publisher" };
-  const ERROR_ROOM = { "Skript-Autor": "script", "Sprecher": "audio", "Bild-Redakteur": "archive",
-    "Cutter": "cut", "Publisher": "send" };
+  let P = PAL.light;
+  function isDark() {
+    const t = document.documentElement.getAttribute("data-theme");
+    if (t) return t === "dark";
+    return matchMedia("(prefers-color-scheme: dark)").matches;
+  }
 
   // ---------------- state ----------------
-  let canvas, ctx, staticLayer, opts, hud, info, tip;
-  let cam = { x: W / 2, y: H / 2, z: 1 }, fitZ = 1;
+  let canvas, ctx, opts, hud, info, tip, floorBtns;
+  let layers = [];
+  let view = "all";                 // "all" | floor index
+  let cam = { x: 0, y: 0, z: 1 }, fitZ = 1, userMoved = false;
   const agents = {};
   const pkgs = new Map();
   const effects = [];
-  let t0 = performance.now(), now = 0;
-  let running = false;
-  let selectedAgent = null;
-
+  let now = 0, t0 = performance.now(), running = false, selectedAgent = null;
   const rnd = (a, b) => a + Math.random() * (b - a);
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  function roomAt(p) { return ROOMS.find((r) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h); }
+  const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const ease = (k) => k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
 
-  function route(from, fromRoom, to, toRoom) {
-    if (fromRoom && fromRoom === toRoom) return [{ ...to }];
-    const pts = [];
-    const a = ROOM[fromRoom], b = ROOM[toRoom];
-    if (a) pts.push(a.doorIn, a.door, a.corr);
-    else pts.push({ x: from.x, y: CORR_Y });
-    if (b) pts.push(b.corr, b.door, b.doorIn);
-    pts.push(to);
-    return pts.map((p) => ({ x: p.x + rnd(-4, 4), y: p.y + rnd(-4, 4) }));
+  function roomAt(fi, p) {
+    return FLOORS[fi].rooms.find((r) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) || null;
   }
 
-  // ---------------- agents ----------------
+  // ---------------- projection ----------------
+  function floorMatrix(fi) {
+    if (view !== "all") return new DOMMatrix();
+    const S = STACK;
+    return new DOMMatrix([S.a, S.b, S.c, S.d, 0, fi * S.gap]);
+  }
+  function project(fi, p) { return floorMatrix(fi).transformPoint(new DOMPoint(p.x, p.y)); }
+  function visibleFloor(fi) { return view === "all" || view === fi; }
+  function worldBounds() {
+    if (view !== "all") return { x0: -20, y0: -20, x1: FW + 20, y1: FH + 20 };
+    const S = STACK;
+    return { x0: -230, y0: -40, x1: FW + FH * S.c + 30, y1: 2 * S.gap + FH * S.d + 60 };
+  }
+
+  // ---------------- agents & routing ----------------
   function ensureAgent(key) {
     if (agents[key]) return agents[key];
     const h = HOME[key];
     if (!h) return null;
-    agents[key] = { key, x: h.x, y: h.y, room: h.room, dir: -Math.PI / 2, path: [], jobs: [], job: null,
-      carrying: null, walk: 0, moving: false, wanderAt: now + rnd(3, 8), srv: {} };
-    return agents[key];
+    return (agents[key] = { key, x: h.x, y: h.y, floor: ROOM[h.room].floor, dir: -Math.PI / 2, path: [], jobs: [], job: null,
+      carrying: null, moving: false, walk: 0, ride: null, wanderAt: now + rnd(3, 9), srv: {} });
   }
-  function goTo(a, target, targetRoom) {
-    a.path = route(a, a.room || roomAt(a)?.key, target, targetRoom);
-    a.targetRoom = targetRoom;
+  function route(a, to, toRoomKey) {
+    const pts = [];
+    const fromRoom = a.floor != null ? roomAt(a.floor, a) : null;
+    const toRoom = ROOM[toRoomKey];
+    if (fromRoom && toRoom && fromRoom.key === toRoom.key) return [{ ...to }];
+    if (fromRoom) pts.push(fromRoom.doorIn, fromRoom.door, fromRoom.corr);
+    else pts.push({ x: a.x, y: CY });
+    if (toRoom && toRoom.floor !== a.floor) pts.push(ELEV.door, ELEV.inn, { ride: toRoom.floor }, ELEV.door);
+    if (toRoom) pts.push(toRoom.corr, toRoom.door, toRoom.doorIn);
+    pts.push(to);
+    return pts.map((p) => (p.ride != null ? p : { x: p.x + rnd(-3, 3), y: p.y + rnd(-3, 3) }));
   }
+  function goTo(a, target, roomKey) { a.path = route(a, target, roomKey); }
 
   // ---------------- packages ----------------
   function roomForVideo(v) {
@@ -106,640 +148,667 @@
     return STATUS_ROOM[v.status] || null;
   }
   function makePkg(v, room) {
-    const p = { id: v.id, title: v.title || v.topic, status: v.status, room, x: 0, y: 0, moves: [],
-      carriedBy: null, pending: false, launched: v.status === "published" || v.status === "ready", born: now };
-    const slot = INBOX[room] || INBOX.leit;
-    p.x = slot.x; p.y = slot.y;
+    const s = INBOX[room] || INBOX.leit;
+    const p = { id: v.id, title: v.title || v.topic, status: v.status, room, x: s.x, y: s.y, moves: [], carriedBy: null,
+      pending: false, launched: v.status === "published" || v.status === "ready", vis: true };
     pkgs.set(v.id, p);
     return p;
   }
-  function lastDest(p) { return p.moves.length ? p.moves[p.moves.length - 1] : p.room; }
-
+  const lastDest = (p) => (p.moves.length ? p.moves[p.moves.length - 1] : p.room);
   function onVideo(v, prev) {
     let p = pkgs.get(v.id);
     const target = roomForVideo(v);
     if (!p) {
-      if (!prev && v.status === "queued") {
-        // a fresh production: the producer fetches the idea from the trend radar first
-        p = makePkg(v, "radar");
-        p.moves.push("leit");
-      } else {
-        p = makePkg(v, target || "leit");
-      }
+      if (!prev && v.status === "queued") { p = makePkg(v, "radar"); p.moves.push("leit"); }
+      else p = makePkg(v, target || "leit");
     }
     p.title = v.title || v.topic;
-    const wasPublished = p.status === "published";
+    const was = p.status;
     p.status = v.status;
     if (target && target !== lastDest(p)) p.moves.push(target);
-    if (v.status === "published" && !wasPublished) p.launchPending = true;
+    if (v.status === "published" && was !== "published") p.launchPending = true;
   }
   function onDeleted(id) {
     const p = pkgs.get(id);
     if (p?.carriedBy && agents[p.carriedBy]) agents[p.carriedBy].carrying = null;
     pkgs.delete(id);
   }
-
   function schedulePackages() {
     for (const p of pkgs.values()) {
       if (p.pending || p.carriedBy || !p.moves.length) continue;
-      const to = p.moves[0];
-      const carrierKey = CARRIER[p.room] || "producer";
-      const a = ensureAgent(carrierKey);
+      const a = ensureAgent(CARRIER[p.room] || "producer");
       if (!a) { p.room = p.moves.shift(); continue; }
       p.pending = true;
-      a.jobs.push({ pkg: p.id, to });
+      a.jobs.push({ pkg: p.id, to: p.moves[0] });
     }
   }
-
   function slotPositions() {
-    const byRoom = {};
-    for (const p of pkgs.values()) {
-      if (p.carriedBy || p.hidden) continue;
-      (byRoom[p.room] ||= []).push(p);
-    }
-    for (const [room, list] of Object.entries(byRoom)) {
-      const base = INBOX[room];
+    const by = {};
+    for (const p of pkgs.values()) if (!p.carriedBy && !p.launching) (by[p.room] ||= []).push(p);
+    for (const [room, list] of Object.entries(by)) {
       list.sort((a, b) => a.id - b.id);
       let shown = list;
       if (room === "send") {
-        // published canisters go to the trophy shelf
         const done = list.filter((p) => p.launched && !p.launchPending);
-        const active = list.filter((p) => !(p.launched && !p.launchPending));
-        done.slice(-12).forEach((p, i) => { p.tx = 40 + 250 + (i % 6) * 22; p.ty = 600 + 300 + Math.floor(i / 6) * 22; p.vis = true; });
-        done.slice(0, -12).forEach((p) => (p.vis = false));
-        shown = active;
+        shown = list.filter((p) => !(p.launched && !p.launchPending));
+        done.forEach((p) => (p.vis = false));
+        done.slice(-10).forEach((p, i) => { const s = rel("send", 338 + (i % 10) * 22, 262); p.tx = s.x; p.ty = s.y; p.vis = true; p.small = true; });
       }
-      shown.forEach((p, i) => {
-        p.tx = base.x + (i % 6) * 24;
-        p.ty = base.y + Math.floor(i / 6) * 24;
-        p.vis = true;
-      });
+      const base = INBOX[room] || { x: ROOM[room].x + 40, y: ROOM[room].y + 60 };
+      shown.forEach((p, i) => { p.tx = base.x + (i % 6) * 26; p.ty = base.y + Math.floor(i / 6) * 26; p.vis = true; p.small = false; });
     }
+  }
+  function pkgFloor(p) {
+    if (p.carriedBy && agents[p.carriedBy]) return agents[p.carriedBy].floor;
+    return ROOM[p.room]?.floor ?? 0;
   }
 
   // ---------------- simulation ----------------
   function step(dt) {
     schedulePackages();
     slotPositions();
-    for (const key of Object.keys(HOME)) ensureAgent(key);
-    const srvAgents = opts.getAgents();
+    for (const k of Object.keys(HOME)) ensureAgent(k);
+    const srv = opts.getAgents();
     for (const a of Object.values(agents)) {
-      a.srv = srvAgents[a.key] || {};
-      // pick next job
-      if (!a.job && a.jobs.length) {
+      a.srv = srv[a.key] || {};
+      if (!a.job && a.jobs.length && !a.ride) {
         a.job = a.jobs.shift();
         a.job.phase = "pickup";
         const p = pkgs.get(a.job.pkg);
         if (!p) { a.job = null; continue; }
-        goTo(a, { x: (p.tx ?? p.x) + 10, y: (p.ty ?? p.y) + 14 }, p.room);
+        goTo(a, { x: (p.tx ?? p.x) + 12, y: (p.ty ?? p.y) + 18 }, p.room);
       }
-      if (a.job && !a.path.length) {
+      if (a.job && !a.path.length && !a.ride) {
         const p = pkgs.get(a.job.pkg);
         if (!p) { a.job = null; a.carrying = null; }
         else if (a.job.phase === "pickup") {
           p.carriedBy = a.key; a.carrying = p.id; a.job.phase = "deliver";
-          const box = INBOX[a.job.to];
-          goTo(a, { x: box.x + rnd(0, 60), y: box.y + 30 }, a.job.to);
-          effects.push({ kind: "pop", x: a.x, y: a.y - 20, t: now, text: "📦" });
-        } else if (a.job.phase === "deliver") {
+          const box = INBOX[a.job.to] || rel(a.job.to, 60, 60);
+          goTo(a, { x: box.x + rnd(10, 70), y: box.y + 34 }, a.job.to);
+        } else {
           p.carriedBy = null; a.carrying = null; p.pending = false;
           p.room = p.moves.shift() || a.job.to; p.x = a.x; p.y = a.y;
-          effects.push({ kind: "ring", x: a.x, y: a.y, t: now, color: ROOM[p.room].color });
+          effects.push({ kind: "ring", floor: a.floor, x: a.x, y: a.y, t: now, color: ROOM[p.room].color });
           if (p.room === "send" && p.launchPending) startLaunch(p);
           a.job = null;
           if (!a.jobs.length) { const h = HOME[a.key]; goTo(a, h, h.room); }
         }
       }
-      // no job: go home when there is work, otherwise wander a little
-      if (!a.job && !a.path.length) {
-        const h = HOME[a.key];
-        const atHome = dist(a, h) < 3;
-        const srv = a.srv;
-        if (srv.status === "working" || srv.status === "paused" || a.jobs.length) {
-          if (!atHome) goTo(a, h, h.room);
-        } else if (now > a.wanderAt) {
-          a.wanderAt = now + rnd(5, 12);
-          if (atHome && Math.random() < 0.65) {
-            const r = ROOM[h.room];
-            goTo(a, { x: rnd(r.x + 60, r.x + r.w - 60), y: rnd(r.y + 90, r.y + r.h - 60) }, h.room);
-            a.slow = true;
-          } else if (!atHome) { goTo(a, h, h.room); a.slow = true; }
+      if (!a.job && !a.path.length && !a.ride) {
+        const h = HOME[a.key], atHome = dist(a, h) < 3 && a.floor === ROOM[h.room].floor;
+        const st = a.srv.status;
+        if (st === "working" || st === "paused" || a.jobs.length) { if (!atHome) goTo(a, h, h.room); }
+        else if (now > a.wanderAt) {
+          a.wanderAt = now + rnd(6, 14);
+          const r = ROOM[h.room];
+          if (atHome && Math.random() < 0.6) { goTo(a, { x: rnd(r.x + 70, r.x + r.w - 70), y: rnd(r.y + 80, r.y + r.h - 60) }, h.room); a.slow = true; }
+          else if (!atHome) { goTo(a, h, h.room); a.slow = true; }
         }
       }
-      // movement
+      // elevator rides
+      if (a.ride) {
+        a.moving = false;
+        if (now - a.ride.t0 >= a.ride.dur) {
+          a.floor = a.ride.to; a.ride = null; a.x = ELEV.inn.x; a.y = ELEV.inn.y; a.path.shift();
+          effects.push({ kind: "ding", floor: a.floor, t: now });
+        }
+        continue;
+      }
       a.moving = false;
       if (a.path.length) {
         const tgt = a.path[0];
-        const dx = tgt.x - a.x, dy = tgt.y - a.y, d = Math.hypot(dx, dy);
+        if (tgt.ride != null) {
+          a.ride = { from: a.floor, to: tgt.ride, t0: now, dur: 0.9 + 0.7 * Math.abs(tgt.ride - a.floor) };
+          effects.push({ kind: "ding", floor: a.floor, t: now });
+          a.floor = null;
+          continue;
+        }
         const carried = a.carrying != null ? pkgs.get(a.carrying) : null;
-        const behind = Math.max(0, (carried ? carried.moves.length - 1 : 0));
-        const speed = a.slow && !a.job ? 55 : (190 + a.jobs.length * 60) * (1 + 0.9 * behind);
+        const behind = Math.max(0, carried ? carried.moves.length - 1 : 0);
+        const speed = a.slow && !a.job ? 60 : (210 + a.jobs.length * 70) * (1 + 0.9 * behind);
+        const dx = tgt.x - a.x, dy = tgt.y - a.y, d = Math.hypot(dx, dy);
         if (d < speed * dt + 0.5) { a.x = tgt.x; a.y = tgt.y; a.path.shift(); if (!a.path.length) a.slow = false; }
         else { a.x += (dx / d) * speed * dt; a.y += (dy / d) * speed * dt; }
-        if (d > 0.5) { a.dir = Math.atan2(dy, dx); a.moving = true; a.walk += dt * (speed / 18); }
-        const r = roomAt(a);
-        a.room = r ? r.key : null;
-      } else if (dist(a, HOME[a.key]) < 3) {
-        a.dir = HOME[a.key].room === "audio" ? -Math.PI / 2 : (ROOM[HOME[a.key].room].top ? -Math.PI / 2 : -Math.PI / 2);
+        if (d > 0.5) { a.dir = Math.atan2(dy, dx); a.moving = true; a.walk += dt * speed / 16; }
       }
     }
-    // packages follow carriers / ease into slots
     for (const p of pkgs.values()) {
       if (p.launching) continue;
       if (p.carriedBy && agents[p.carriedBy]) {
         const a = agents[p.carriedBy];
-        p.x = a.x + Math.cos(a.dir) * 16; p.y = a.y + Math.sin(a.dir) * 16 - 4;
+        p.x = a.x + Math.cos(a.dir) * 20; p.y = a.y + Math.sin(a.dir) * 20;
       } else if (p.tx != null) {
-        p.x += (p.tx - p.x) * Math.min(1, dt * 6);
-        p.y += (p.ty - p.y) * Math.min(1, dt * 6);
+        p.x += (p.tx - p.x) * Math.min(1, dt * 6); p.y += (p.ty - p.y) * Math.min(1, dt * 6);
       }
     }
     for (let i = effects.length - 1; i >= 0; i--) if (now - effects[i].t > (effects[i].life || 1.2)) effects.splice(i, 1);
   }
-
   function startLaunch(p) {
-    p.launchPending = false;
-    p.launching = true;
-    const shaft = { x: 40 + 110, y: 600 + 215 };
-    const sx = p.x, sy = p.y, st = now;
-    effects.push({ kind: "launch", t: now, life: 3.2, x: shaft.x, y: shaft.y, p, sx, sy, st });
+    p.launchPending = false; p.launching = true;
+    const c = rel("send", 130, 175);
+    effects.push({ kind: "launch", floor: ROOM.send.floor, t: now, life: 3, x: c.x, y: c.y, p, sx: p.x, sy: p.y });
   }
 
-  // ---------------- drawing: static layer ----------------
-  function seeded(seed) { return () => ((seed = (seed * 16807) % 2147483647) / 2147483647); }
-
-  function buildStatic() {
-    const S = 1.6;
-    staticLayer = document.createElement("canvas");
-    staticLayer.width = W * S; staticLayer.height = H * S;
-    const c = staticLayer.getContext("2d");
-    c.scale(S, S);
-    // bedrock
-    c.fillStyle = "#06080b"; c.fillRect(0, 0, W, H);
-    const rand = seeded(42);
-    for (let i = 0; i < 1400; i++) {
-      c.fillStyle = `rgba(${90 + rand() * 40},${90 + rand() * 30},${100 + rand() * 30},${0.04 + rand() * 0.07})`;
-      const s = 1 + rand() * 5;
-      c.beginPath(); c.arc(rand() * W, rand() * H, s, 0, TAU); c.fill();
-    }
-    // corridor
-    c.fillStyle = "#11151c"; c.fillRect(30, 410, W - 60, 140);
-    c.strokeStyle = "rgba(255,255,255,.03)"; c.lineWidth = 1;
-    for (let x = 30; x < W - 30; x += 40) { c.beginPath(); c.moveTo(x, 410); c.lineTo(x, 550); c.stroke(); }
-    for (let y = 410; y < 550; y += 40) { c.beginPath(); c.moveTo(30, y); c.lineTo(W - 30, y); c.stroke(); }
-    hazard(c, 30, 410, W - 60, 8); hazard(c, 30, 542, W - 60, 8);
-    // pipes along the corridor
-    for (const [y, col] of [[426, "#1d2533"], [434, "#232c3d"]]) { c.strokeStyle = col; c.lineWidth = 5; c.beginPath(); c.moveTo(40, y); c.lineTo(W - 40, y); c.stroke(); }
-    c.font = "700 13px Inter, system-ui, sans-serif"; c.fillStyle = "rgba(255,255,255,.12)";
-    c.fillText("HAUPTKORRIDOR  ·  EBENE  -3", 60, 535);
-    c.fillText("LUGGER  UNTERGRUND-STUDIO", W - 320, 535);
-    // rooms
-    for (const r of ROOMS) drawRoomStatic(c, r);
-    // vignette
-    const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05);
-    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.55)");
-    c.fillStyle = g; c.fillRect(0, 0, W, H);
-  }
-
-  function hazard(c, x, y, w, h) {
-    c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
-    c.fillStyle = "#2b2410"; c.fillRect(x, y, w, h);
-    c.fillStyle = "rgba(255,212,0,.35)";
-    for (let i = x - 20; i < x + w; i += 20) { c.beginPath(); c.moveTo(i, y + h); c.lineTo(i + 10, y + h); c.lineTo(i + 20, y); c.lineTo(i + 10, y); c.fill(); }
-    c.restore();
-  }
-
+  // ---------------- static floor plans ----------------
   function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
-
-  function desk(c, x, y, w, h, color) {
-    c.fillStyle = "rgba(0,0,0,.35)"; rr(c, x + 4, y + 6, w, h, 6); c.fill();
-    c.fillStyle = "#2a3140"; rr(c, x, y, w, h, 6); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.06)"; c.lineWidth = 1; c.stroke();
-    if (color) { c.fillStyle = color; c.globalAlpha = .25; c.fillRect(x + 4, y + h - 4, w - 8, 2); c.globalAlpha = 1; }
+  function furn(c, x, y, w, h, r = 8, fill = P.furn) {
+    c.save(); c.shadowColor = P.shadow; c.shadowBlur = 14; c.shadowOffsetY = 4;
+    c.fillStyle = fill; rr(c, x, y, w, h, r); c.fill(); c.restore();
+    c.strokeStyle = P.line; c.lineWidth = 1; rr(c, x + 0.5, y + 0.5, w - 1, h - 1, r); c.stroke();
   }
-  function monitor(c, x, y, w = 46) {
-    c.fillStyle = "#0d1118"; rr(c, x, y, w, 8, 2); c.fill();
-    c.fillStyle = "#3a4560"; c.fillRect(x + w / 2 - 4, y + 8, 8, 5);
+  function disc(c, x, y, r, fill = P.furn) {
+    c.save(); c.shadowColor = P.shadow; c.shadowBlur = 12; c.shadowOffsetY = 3;
+    c.fillStyle = fill; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.restore();
+    c.strokeStyle = P.line; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
   }
-  function chair(c, x, y, color) {
-    c.fillStyle = "#1a1f29"; c.beginPath(); c.arc(x, y, 13, 0, TAU); c.fill();
-    c.strokeStyle = color; c.globalAlpha = .4; c.lineWidth = 2; c.stroke(); c.globalAlpha = 1;
-  }
-
-  function drawRoomStatic(c, r) {
-    // floor
-    c.fillStyle = "#151a23"; c.fillRect(r.x, r.y, r.w, r.h);
-    const g = c.createRadialGradient(r.x + r.w / 2, r.y + r.h / 2, 10, r.x + r.w / 2, r.y + r.h / 2, r.w * 0.75);
-    g.addColorStop(0, hexA(r.color, .10)); g.addColorStop(1, hexA(r.color, .02));
-    c.fillStyle = g; c.fillRect(r.x, r.y, r.w, r.h);
-    c.strokeStyle = "rgba(255,255,255,.035)"; c.lineWidth = 1;
-    for (let x = r.x; x < r.x + r.w; x += 30) { c.beginPath(); c.moveTo(x, r.y); c.lineTo(x, r.y + r.h); c.stroke(); }
-    for (let y = r.y; y < r.y + r.h; y += 30) { c.beginPath(); c.moveTo(r.x, y); c.lineTo(r.x + r.w, y); c.stroke(); }
-    // furniture
-    FURNITURE[r.key]?.(c, r);
-    // walls
-    c.save();
-    c.strokeStyle = "#232a37"; c.lineWidth = 14; c.strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
-    c.shadowColor = r.color; c.shadowBlur = 14; c.strokeStyle = hexA(r.color, .75); c.lineWidth = 2;
-    c.strokeRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
-    c.restore();
-    // door gap + corridor connector
-    const dw = 74, dy = r.top ? r.y + r.h - 12 : r.y - 12;
-    c.fillStyle = "#151a23"; c.fillRect(r.door.x - dw / 2, dy, dw, 24);
-    c.fillStyle = "#11151c";
-    if (r.top) c.fillRect(r.door.x - dw / 2, r.y + r.h + 4, dw, 410 - (r.y + r.h) - 4);
-    else c.fillRect(r.door.x - dw / 2, 550, dw, r.y - 550 - 4);
-    c.fillStyle = hexA(r.color, .8);
-    c.fillRect(r.door.x - dw / 2 - 4, dy, 4, 24); c.fillRect(r.door.x + dw / 2, dy, 4, 24);
-    // name plate
-    c.font = "800 15px Inter, system-ui, sans-serif"; c.fillStyle = hexA(r.color, .95);
-    c.fillText(r.name.toUpperCase(), r.x + 18, r.y + 30);
+  function screenRect(c, x, y, w, h) { c.fillStyle = P.screen; rr(c, x, y, w, h, 4); c.fill(); }
+  function chair(c, x, y) { disc(c, x, y, 13, P.room); c.fillStyle = P.line; c.beginPath(); c.arc(x, y, 8, 0, TAU); c.fill(); }
+  function plant(c, x, y, r = 16) {
+    disc(c, x, y, r, P.furn);
+    for (let i = 0; i < 7; i++) { const a = i / 7 * TAU; c.fillStyle = i % 2 ? "#34c759" : "#28a745"; c.beginPath(); c.ellipse(x + Math.cos(a) * r * 0.45, y + Math.sin(a) * r * 0.45, r * 0.42, r * 0.22, a, 0, TAU); c.fill(); }
   }
 
-  const FURNITURE = {
-    radar(c, r) {
-      const cx = r.x + 120, cy = r.y + 175;
-      c.fillStyle = "#0a1420"; c.beginPath(); c.arc(cx, cy, 92, 0, TAU); c.fill();
-      c.strokeStyle = "rgba(77,163,255,.35)"; c.lineWidth = 1.5;
-      for (const rad of [30, 60, 90]) { c.beginPath(); c.arc(cx, cy, rad, 0, TAU); c.stroke(); }
-      c.beginPath(); c.moveTo(cx - 90, cy); c.lineTo(cx + 90, cy); c.moveTo(cx, cy - 90); c.lineTo(cx, cy + 90); c.stroke();
-      // idea pinboard
-      c.fillStyle = "#3b2f22"; rr(c, r.x + 228, r.y + 48, 160, 92, 6); c.fill();
-      c.strokeStyle = "#5c4a35"; c.lineWidth = 3; c.stroke();
-      desk(c, r.x + 262, r.y + 210, 80, 34, r.color); monitor(c, r.x + 279, r.y + 214);
-      chair(c, r.x + 300, r.y + 268, r.color);
+  function buildLayers() {
+    P = isDark() ? PAL.dark : PAL.light;
+    const S = 1.5;
+    layers = FLOORS.map((f, fi) => {
+      const cv = document.createElement("canvas");
+      cv.width = FW * S; cv.height = FH * S;
+      const c = cv.getContext("2d");
+      c.scale(S, S);
+      c.fillStyle = P.slab; rr(c, 0, 0, FW, FH, 22); c.fill();
+      // corridor
+      c.fillStyle = P.corr; rr(c, 30, 334, ELEV.x - 30, 92, 10); c.fill();
+      c.save(); c.setLineDash([2, 14]); c.lineCap = "round"; c.strokeStyle = P.flow; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(60, CY); c.lineTo(ELEV.x - 30, CY); c.stroke(); c.restore();
+      c.font = "600 13px -apple-system, BlinkMacSystemFont, Inter, sans-serif"; c.fillStyle = P.text3;
+      c.fillText(`EBENE ${f.lvl}  ·  ${f.name.toUpperCase()}`, 52, 414);
+      // rooms
+      for (const r of f.rooms) drawRoom(c, r);
+      // elevator core
+      furn(c, ELEV.x, ELEV.y, ELEV.w, ELEV.h, 16, P.room);
+      c.fillStyle = P.line; rr(c, ELEV.x + 18, ELEV.y + 26, ELEV.w - 36, ELEV.h - 52, 10); c.fill();
+      c.strokeStyle = P.wall; c.lineWidth = 2; c.beginPath(); c.moveTo(ELEV.x, CY - 30); c.lineTo(ELEV.x, CY + 30); c.stroke();
+      c.font = "600 11px -apple-system, BlinkMacSystemFont, Inter, sans-serif"; c.fillStyle = P.text2; c.textAlign = "center";
+      c.fillText("AUFZUG", ELEV.x + ELEV.w / 2, ELEV.y + 18); c.textAlign = "left";
+      return cv;
+    });
+  }
+
+  function drawRoom(c, r) {
+    c.save(); c.shadowColor = P.shadow; c.shadowBlur = 18; c.shadowOffsetY = 4;
+    c.fillStyle = P.room; rr(c, r.x, r.y, r.w, r.h, 16); c.fill(); c.restore();
+    c.fillStyle = hexA(r.color, 0.045); rr(c, r.x, r.y, r.w, r.h, 16); c.fill();
+    c.strokeStyle = P.wall; c.lineWidth = 3; rr(c, r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, 15); c.stroke();
+    // doorway
+    c.fillStyle = P.room; c.fillRect(r.door.x - 34, r.top ? r.y + r.h - 4 : r.y - 1, 68, 6);
+    c.fillStyle = hexA(r.color, 0.5); c.fillRect(r.door.x - 36, r.top ? r.y + r.h - 4 : r.y - 1, 3, 6); c.fillRect(r.door.x + 33, r.top ? r.y + r.h - 4 : r.y - 1, 3, 6);
+    // label
+    c.fillStyle = r.color; c.beginPath(); c.arc(r.x + 24, r.y + 27, 4, 0, TAU); c.fill();
+    c.font = "600 15px -apple-system, BlinkMacSystemFont, Inter, sans-serif"; c.fillStyle = P.text; c.fillText(r.name, r.x + 36, r.y + 32);
+    c.font = "500 11.5px -apple-system, BlinkMacSystemFont, Inter, sans-serif"; c.fillStyle = P.text2; c.fillText(r.sub, r.x + 36, r.y + 49);
+    c.save(); c.translate(r.x, r.y); FURN[r.key]?.(c, r); c.restore();
+  }
+
+  const FURN = {
+    radar(c) {
+      disc(c, 130, 165, 98, P.screen);
+      c.strokeStyle = "rgba(10,132,255,.35)"; c.lineWidth = 1.2;
+      for (const k of [32, 64, 94]) { c.beginPath(); c.arc(130, 165, k, 0, TAU); c.stroke(); }
+      c.beginPath(); c.moveTo(36, 165); c.lineTo(224, 165); c.moveTo(130, 71); c.lineTo(130, 259); c.stroke();
+      furn(c, 362, 40, 200, 92, 10, P.furn);
+      furn(c, 400, 182, 120, 40); screenRect(c, 430, 190, 60, 8); chair(c, 455, 248);
+      plant(c, 555, 268);
     },
-    leit(c, r) {
-      c.fillStyle = "#0b0f18"; rr(c, r.x + 30, r.y + 46, r.w - 60, 72, 8); c.fill();
-      c.strokeStyle = "rgba(167,139,250,.5)"; c.lineWidth = 2; c.stroke();
-      c.fillStyle = "#262d3b"; c.beginPath(); c.arc(r.x + 205, r.y + 215, 58, 0, TAU); c.fill();
-      c.strokeStyle = "rgba(167,139,250,.35)"; c.lineWidth = 3; c.stroke();
-      c.fillStyle = "#0d1118"; c.beginPath(); c.arc(r.x + 205, r.y + 215, 34, 0, TAU); c.fill();
-      chair(c, r.x + 205, r.y + 292, r.color);
-      c.fillStyle = "rgba(255,255,255,.08)"; rr(c, r.x + 30, r.y + 286, 160, 56, 6); c.fill();
+    leit(c) {
+      screenRect(c, 40, 66, 510, 62);
+      disc(c, 295, 205, 62, P.furn); disc(c, 295, 205, 36, P.room);
+      chair(c, 400, 205); chair(c, 190, 205); chair(c, 295, 130 + 6);
+      plant(c, 556, 268);
     },
-    script(c, r) {
-      for (let i = 0; i < 4; i++) {
-        c.fillStyle = "#2a2116"; c.fillRect(r.x + 18, r.y + 50 + i * 60, 34, 52);
-        for (let j = 0; j < 6; j++) { c.fillStyle = ["#a33", "#36a", "#3a6", "#aa3", "#a63", "#666"][(i + j) % 6]; c.fillRect(r.x + 22 + (j % 3) * 9, r.y + 54 + i * 60 + Math.floor(j / 3) * 24, 7, 20); }
-      }
-      desk(c, r.x + 190, r.y + 140, 120, 42, r.color); monitor(c, r.x + 227, r.y + 145);
-      c.fillStyle = "#e8e2d0"; c.save(); c.translate(r.x + 205, r.y + 160); c.rotate(-.2); c.fillRect(0, 0, 16, 20); c.restore();
-      c.fillStyle = "#e8e2d0"; c.save(); c.translate(r.x + 285, r.y + 152); c.rotate(.3); c.fillRect(0, 0, 14, 18); c.restore();
-      chair(c, r.x + 250, r.y + 222, r.color);
-      desk(c, r.x + 300, r.y + 60, 80, 34); desk(c, r.x + 110, r.y + 60, 60, 34);
-    },
-    audio(c, r) {
-      // glass booth
-      c.fillStyle = "rgba(255,92,108,.05)"; c.fillRect(r.x + 40, r.y + 50, 150, 150);
-      c.strokeStyle = "rgba(180,220,255,.35)"; c.lineWidth = 4; c.strokeRect(r.x + 40, r.y + 50, 150, 150);
-      c.fillStyle = "#151a23"; c.fillRect(r.x + 95, r.y + 196, 40, 8);
-      c.fillStyle = "#555"; c.beginPath(); c.arc(r.x + 115, r.y + 108, 6, 0, TAU); c.fill();
-      c.strokeStyle = "#777"; c.lineWidth = 2; c.beginPath(); c.moveTo(r.x + 115, r.y + 108); c.lineTo(r.x + 150, r.y + 80); c.stroke();
-      // mixer
-      desk(c, r.x + 240, r.y + 100, 140, 60, r.color);
-      for (let i = 0; i < 10; i++) { c.fillStyle = "#11151d"; c.fillRect(r.x + 250 + i * 12, r.y + 110, 6, 38); }
-      // acoustic panels
-      for (let i = 0; i < 5; i++) { c.fillStyle = "#1e1418"; c.fillRect(r.x + 225 + i * 34, r.y + 46, 28, 26); }
-    },
-    archive(c, r) {
-      for (let row = 0; row < 3; row++) {
-        const y = r.y + 130 + row * 70;
-        c.fillStyle = "#222a22"; c.fillRect(r.x + 30, y, 220, 26);
-        for (let i = 0; i < 9; i++) {
-          c.fillStyle = "#3d4a3d"; c.beginPath(); c.arc(r.x + 44 + i * 24, y + 13, 9, 0, TAU); c.fill();
-          c.fillStyle = "#1a201a"; c.beginPath(); c.arc(r.x + 44 + i * 24, y + 13, 3, 0, TAU); c.fill();
-        }
-      }
-      desk(c, r.x + 262, r.y + 190, 100, 36, r.color); monitor(c, r.x + 289, r.y + 195);
-      chair(c, r.x + 300, r.y + 252, r.color);
-    },
-    cut(c, r) {
-      desk(c, r.x + 120, r.y + 110, 170, 40, r.color);
-      monitor(c, r.x + 130, r.y + 116, 44); monitor(c, r.x + 183, r.y + 112, 44); monitor(c, r.x + 236, r.y + 116, 44);
-      chair(c, r.x + 205, r.y + 178, r.color);
-      for (let i = 0; i < 4; i++) {
-        c.fillStyle = "#1b2029"; c.fillRect(r.x + 330, r.y + 110 + i * 56, 56, 46);
-        c.strokeStyle = "rgba(255,154,61,.3)"; c.lineWidth = 1; c.strokeRect(r.x + 330, r.y + 110 + i * 56, 56, 46);
-      }
-      c.font = "700 10px Inter, sans-serif"; c.fillStyle = "rgba(255,154,61,.6)"; c.fillText("RENDER-FARM", r.x + 322, r.y + 102);
-    },
-    approve(c, r) {
-      c.fillStyle = "#1f2733"; rr(c, r.x + 100, r.y + 170, 210, 90, 10); c.fill();
-      c.strokeStyle = "rgba(62,230,230,.4)"; c.lineWidth = 2; c.stroke();
-      c.font = "800 12px Inter, sans-serif"; c.fillStyle = "rgba(62,230,230,.55)";
-      c.fillText("DEINE FREIGABE", r.x + 152, r.y + 290);
-      for (let i = 0; i < 2; i++) { c.fillStyle = "#1a2a2a"; c.beginPath(); c.arc(r.x + 60 + i * 290, r.y + 300, 18, 0, TAU); c.fill(); }
-    },
-    send(c, r) {
-      const cx = r.x + 110, cy = r.y + 215;
-      c.fillStyle = "#05070a"; c.beginPath(); c.arc(cx, cy, 62, 0, TAU); c.fill();
-      c.lineWidth = 10; c.strokeStyle = "#2b2410"; c.stroke();
-      c.save(); c.setLineDash([12, 12]); c.strokeStyle = "rgba(255,212,0,.5)"; c.lineWidth = 6; c.beginPath(); c.arc(cx, cy, 62, 0, TAU); c.stroke(); c.restore();
-      c.font = "700 10px Inter, sans-serif"; c.fillStyle = "rgba(255,79,216,.6)"; c.fillText("UPLINK ZUR OBERFLÄCHE", cx - 62, cy + 88);
-      const terms = [["YT", "#ff3b3b"], ["TT", "#25f4ee"], ["IG", "#e1306c"]];
-      terms.forEach(([t, col], i) => {
-        const x = r.x + 230 + i * 52, y = r.y + 130;
-        c.fillStyle = "#1d2230"; rr(c, x, y, 42, 30, 6); c.fill();
-        c.strokeStyle = col; c.globalAlpha = .6; c.lineWidth = 2; c.stroke(); c.globalAlpha = 1;
-        c.font = "800 12px Inter, sans-serif"; c.fillStyle = col; c.fillText(t, x + 12, y + 20);
+    send(c) {
+      disc(c, 130, 175, 70, P.furn); c.fillStyle = P.screen; c.beginPath(); c.arc(130, 175, 52, 0, TAU); c.fill();
+      c.strokeStyle = "rgba(191,90,242,.55)"; c.lineWidth = 2; c.setLineDash([6, 6]); c.beginPath(); c.arc(130, 175, 60, 0, TAU); c.stroke(); c.setLineDash([]);
+      c.font = "600 10.5px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.textAlign = "center"; c.fillText("UPLINK", 130, 270); c.textAlign = "left";
+      [["YouTube", "#ff3b30"], ["TikTok", "#25c2d6"], ["Instagram", "#e1306c"]].forEach(([t, col], i) => {
+        const x = 300 + i * 92;
+        furn(c, x, 118, 80, 46, 10); c.fillStyle = col; c.beginPath(); c.arc(x + 16, 141, 5, 0, TAU); c.fill();
+        c.font = "600 11px -apple-system, Inter, sans-serif"; c.fillStyle = P.text; c.fillText(t, x + 26, 145);
       });
-      c.fillStyle = "#1a1f2a"; c.fillRect(r.x + 240, r.y + 290, 150, 50);
-      c.font = "700 10px Inter, sans-serif"; c.fillStyle = "rgba(53,208,127,.55)"; c.fillText("VERÖFFENTLICHT", r.x + 250, r.y + 352);
+      furn(c, 328, 248, 236, 28, 8, P.furn);
+      c.font = "500 10.5px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.fillText("Veröffentlicht", 330, 292);
+    },
+    approve(c) {
+      furn(c, 170, 118, 260, 96, 18, P.furn);
+      c.font = "600 11px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.textAlign = "center"; c.fillText("PRÜFTISCH", 300, 236); c.textAlign = "left";
+      chair(c, 300, 92); plant(c, 40, 268); plant(c, 556, 268);
+    },
+    script(c) {
+      for (let i = 0; i < 4; i++) {
+        furn(c, 22, 70 + i * 54, 40, 46, 6);
+        for (let j = 0; j < 4; j++) { c.fillStyle = ["#ff9f0a", "#0a84ff", "#30d158", "#ff375f"][(i + j) % 4]; c.globalAlpha = 0.6; c.fillRect(28 + j * 8, 76 + i * 54, 6, 34); c.globalAlpha = 1; }
+      }
+      furn(c, 260, 128, 150, 46); screenRect(c, 305, 136, 60, 8);
+      c.fillStyle = P.room; c.save(); c.translate(276, 150); c.rotate(-0.2); c.fillRect(0, 0, 16, 20); c.restore();
+      chair(c, 330, 212);
+      furn(c, 440, 70, 110, 44); furn(c, 110, 70, 100, 44); plant(c, 556, 268);
+    },
+    audio(c) {
+      c.fillStyle = hexA("#64d2ff", 0.1); rr(c, 40, 62, 190, 180, 14); c.fill();
+      c.strokeStyle = hexA("#64d2ff", 0.55); c.lineWidth = 3; rr(c, 40, 62, 190, 180, 14); c.stroke();
+      c.fillStyle = P.room; c.fillRect(110, 239, 50, 6);
+      c.fillStyle = P.text3; c.beginPath(); c.arc(135, 135, 7, 0, TAU); c.fill();
+      c.strokeStyle = P.text3; c.lineWidth = 2; c.beginPath(); c.moveTo(135, 135); c.lineTo(170, 100); c.stroke();
+      furn(c, 320, 88, 200, 70, 10); screenRect(c, 332, 98, 176, 50);
+      furn(c, 300, 40, 240, 18, 6, P.furn);
+    },
+    archive(c) {
+      for (let row = 0; row < 3; row++) {
+        const y = 110 + row * 58;
+        furn(c, 40, y, 270, 34, 8);
+        for (let i = 0; i < 10; i++) { c.fillStyle = P.line; c.beginPath(); c.arc(56 + i * 26, y + 17, 9, 0, TAU); c.fill(); c.fillStyle = hexA("#30b45a", 0.45); c.beginPath(); c.arc(56 + i * 26, y + 17, 3, 0, TAU); c.fill(); }
+      }
+      furn(c, 385, 160, 120, 42); screenRect(c, 415, 168, 60, 8); chair(c, 445, 232); plant(c, 556, 268);
+    },
+    lounge(c) {
+      furn(c, 60, 90, 200, 56, 22); furn(c, 60, 90, 200, 18, 9, P.furn);
+      disc(c, 160, 196, 34); plant(c, 300, 110, 20); plant(c, 540, 260, 20);
+      furn(c, 420, 60, 120, 44, 10); c.fillStyle = P.screen; rr(c, 432, 70, 28, 24, 5); c.fill();
+      c.font = "500 10.5px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.fillText("Kaffee", 470, 87);
+      disc(c, 420, 210, 28); chair(c, 382, 210); chair(c, 458, 210);
+    },
+    cut(c) {
+      furn(c, 180, 104, 230, 46); screenRect(c, 192, 112, 60, 8); screenRect(c, 265, 108, 60, 8); screenRect(c, 338, 112, 60, 8);
+      chair(c, 295, 190); furn(c, 460, 70, 90, 140, 10); plant(c, 556, 268);
+    },
+    farm(c) {
+      for (let row = 0; row < 2; row++) for (let i = 0; i < 6; i++) furn(c, 40 + i * 88, 80 + row * 100, 72, 72, 8, P.furn);
+    },
+    server(c) {
+      for (let i = 0; i < 5; i++) furn(c, 50 + i * 100, 96, 70, 150, 8, P.furn);
+      c.strokeStyle = hexA("#0a84ff", 0.3); c.lineWidth = 3; c.beginPath(); c.moveTo(40, 270); c.lineTo(550, 270); c.stroke();
+    },
+    power(c) {
+      for (let i = 0; i < 3; i++) { disc(c, 110 + i * 170, 150, 54); c.fillStyle = P.line; c.beginPath(); c.arc(110 + i * 170, 150, 40, 0, TAU); c.fill(); }
+      furn(c, 60, 240, 470, 30, 8);
     },
   };
 
-  function hexA(hex, a) {
-    const n = parseInt(hex.slice(1), 16);
-    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  // ---------------- dynamic drawing (per floor, in floor-local coords) ----------------
+  const working = (k) => opts.getAgents()[k]?.status === "working";
+
+  function drawFloorDynamic(c, fi) {
+    const ag = opts.getAgents(), stats = opts.getStats() || {};
+    // corridor flow lights
+    for (let i = 0; i < 14; i++) {
+      const x = 60 + ((i * 90 + now * 70) % (ELEV.x - 100));
+      c.fillStyle = P.flow; c.beginPath(); c.arc(x, CY, 3, 0, TAU); c.fill();
+    }
+    // elevator indicator
+    const riders = Object.values(agents).filter((a) => a.ride && (a.ride.from === fi || a.ride.to === fi));
+    c.fillStyle = riders.length ? "#0a84ff" : P.text3;
+    c.beginPath(); c.arc(ELEV.x + ELEV.w / 2, ELEV.y + ELEV.h - 14, 4 + (riders.length ? Math.sin(now * 8) : 0), 0, TAU); c.fill();
+
+    for (const r of FLOORS[fi].rooms) {
+      c.save(); c.translate(r.x, r.y);
+      ROOM_ANIM[r.key]?.(c, r, ag, stats);
+      c.restore();
+      // room status (rooms with a resident agent)
+      const owner = Object.keys(HOME).find((k) => HOME[k].room === r.key);
+      const special = r.key === "farm" ? "editor" : null;
+      const key = owner || special;
+      if (!key) continue;
+      const s = ag[key]?.status || "idle";
+      const label = { working: "Aktiv", idle: "Bereit", paused: "Pausiert", error: "Fehler", waiting: "Wartet" }[s] || s;
+      const col = { working: "#0a84ff", idle: "#34c759", paused: "#8e8e93", error: "#ff3b30", waiting: "#5e5ce6" }[s] || "#8e8e93";
+      if (s === "error") { c.fillStyle = `rgba(255,59,48,${0.05 + 0.04 * Math.sin(now * 5)})`; rr(c, r.x, r.y, r.w, r.h, 16); c.fill(); }
+      if (s === "paused" && owner) { c.fillStyle = hexA(isDark() ? "#000000" : "#ffffff", 0.45); rr(c, r.x, r.y, r.w, r.h, 16); c.fill(); }
+      c.font = "600 11px -apple-system, BlinkMacSystemFont, Inter, sans-serif";
+      const w = c.measureText(label).width + 26, x = r.x + r.w - w - 16, y = r.y + 16;
+      c.fillStyle = hexA(col, 0.12); rr(c, x, y, w, 22, 11); c.fill();
+      c.fillStyle = col; c.beginPath(); c.arc(x + 11, y + 11, 3.5, 0, TAU); c.fill();
+      c.fillText(label, x + 19, y + 15);
+    }
   }
 
-  // ---------------- drawing: dynamic ----------------
-  function agentWorking(key) { return opts.getAgents()[key]?.status === "working"; }
-
-  function drawDynamic(c) {
-    const ag = opts.getAgents();
-    const stats = opts.getStats() || {};
-    // corridor flow lights
-    for (let i = 0; i < 24; i++) {
-      const x = 40 + ((i * 75 + now * 60) % (W - 80));
-      c.fillStyle = "rgba(77,163,255,.35)"; c.fillRect(x, 428, 8, 4);
-    }
-    // radar sweep
-    {
-      const r = ROOM.radar, cx = r.x + 120, cy = r.y + 175;
-      const sp = agentWorking("trend_scout") ? 3.5 : 0.8;
-      const a = now * sp;
-      const g = c.createConicGradient ? c.createConicGradient(a, cx, cy) : null;
-      if (g) {
-        g.addColorStop(0, "rgba(77,163,255,.45)"); g.addColorStop(0.12, "rgba(77,163,255,0)"); g.addColorStop(1, "rgba(77,163,255,0)");
-        c.fillStyle = g; c.beginPath(); c.arc(cx, cy, 90, 0, TAU); c.fill();
+  const ROOM_ANIM = {
+    radar(c, r, ag, stats) {
+      const sp = working("trend_scout") ? 3.2 : 0.7, a = now * sp;
+      if (c.createConicGradient) {
+        const g = c.createConicGradient(a, 130, 165);
+        g.addColorStop(0, "rgba(10,132,255,.55)"); g.addColorStop(0.1, "rgba(10,132,255,0)"); g.addColorStop(1, "rgba(10,132,255,0)");
+        c.fillStyle = g; c.beginPath(); c.arc(130, 165, 94, 0, TAU); c.fill();
       }
-      for (let i = 0; i < 5; i++) {
-        const bl = (i * 1.7 + 0.3) % TAU, bd = 25 + ((i * 37) % 60);
-        const fade = ((a - bl) % TAU + TAU) % TAU;
-        c.fillStyle = `rgba(150,210,255,${Math.max(0, 1 - fade / 2.5)})`;
-        c.beginPath(); c.arc(cx + Math.cos(bl) * bd, cy + Math.sin(bl) * bd, 3, 0, TAU); c.fill();
+      for (let i = 0; i < 6; i++) {
+        const bl = (i * 1.9 + 0.4) % TAU, bd = 24 + ((i * 29) % 64), fade = ((a - bl) % TAU + TAU) % TAU;
+        c.fillStyle = `rgba(100,190,255,${Math.max(0, 1 - fade / 2.4)})`; c.beginPath(); c.arc(130 + Math.cos(bl) * bd, 165 + Math.sin(bl) * bd, 3, 0, TAU); c.fill();
       }
-      // idea sticky notes
-      const n = Math.min(stats.ideas || 0, 15);
-      const cols = ["#ffe066", "#ffd6a5", "#caffbf", "#9bf6ff", "#ffc6ff"];
+      const n = Math.min(stats.ideas || 0, 12), cols = ["#ffd60a", "#ffb340", "#7ee081", "#7cc7ff", "#ff9fd0"];
       for (let i = 0; i < n; i++) {
-        c.save(); c.translate(r.x + 240 + (i % 5) * 29, r.y + 58 + Math.floor(i / 5) * 26); c.rotate(((i * 7) % 5 - 2) * 0.05);
-        c.fillStyle = cols[i % cols.length]; c.fillRect(0, 0, 22, 20); c.restore();
+        c.save(); c.translate(376 + (i % 6) * 30, 52 + Math.floor(i / 6) * 36); c.rotate(((i * 7) % 5 - 2) * 0.04);
+        c.fillStyle = cols[i % 5]; c.shadowColor = "rgba(0,0,0,.15)"; c.shadowBlur = 3; c.shadowOffsetY = 1; rr(c, 0, 0, 24, 24, 3); c.fill(); c.restore();
       }
-      if ((stats.ideas || 0) > 15) { c.font = "700 11px Inter"; c.fillStyle = "#ffe066"; c.fillText(`+${stats.ideas - 15}`, r.x + 360, r.y + 135); }
-    }
-    // leitstand big screen
-    {
-      const r = ROOM.leit;
-      c.font = "600 12px ui-monospace, monospace"; c.fillStyle = "rgba(200,190,255,.85)";
+      if (!n) { c.font = "500 11px -apple-system, Inter, sans-serif"; c.fillStyle = P.text3; c.fillText("Keine Ideen", 425, 90); }
+    },
+    leit(c, r, ag, stats) {
       const slot = ag.producer?.next_slot ? new Date(ag.producer.next_slot).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "Autopilot aus";
-      c.fillText(`NÄCHSTE PRODUKTION: ${slot}`, r.x + 44, r.y + 70);
-      c.fillText(`IN PRODUKTION: ${stats.in_production ?? 0}   ONLINE: ${stats.published ?? 0}`, r.x + 44, r.y + 92);
-      const blink = Math.sin(now * 3) > 0;
-      c.fillStyle = blink ? "rgba(167,139,250,.9)" : "rgba(167,139,250,.3)"; c.beginPath(); c.arc(r.x + r.w - 46, r.y + 64, 4, 0, TAU); c.fill();
-      // hologram on table
-      c.save(); c.globalAlpha = .35 + .15 * Math.sin(now * 2);
-      c.strokeStyle = "#a78bfa"; c.lineWidth = 1.5;
-      c.beginPath(); c.arc(r.x + 205, r.y + 215, 22 + 6 * Math.sin(now * 1.5), 0, TAU); c.stroke();
-      c.restore();
-    }
-    // writing particles
-    if (agentWorking("script_writer")) {
-      const r = ROOM.script;
+      c.font = "600 12px ui-monospace, SF Mono, Menlo, monospace"; c.fillStyle = P.screenText;
+      c.fillText(`NÄCHSTE PRODUKTION  ${slot}`, 56, 92);
+      c.fillStyle = "#8e8e93"; c.fillText(`IN ARBEIT ${stats.in_production ?? 0}   ·   FREIGABE ${stats.awaiting_approval ?? 0}   ·   ONLINE ${stats.published ?? 0}`, 56, 114);
+      c.fillStyle = Math.sin(now * 3) > 0 ? "#30d158" : "#1c5c2c"; c.beginPath(); c.arc(532, 82, 4, 0, TAU); c.fill();
+      c.save(); c.globalAlpha = 0.35 + 0.2 * Math.sin(now * 2); c.strokeStyle = "#5e5ce6"; c.lineWidth = 2;
+      c.beginPath(); c.arc(295, 205, 18 + 6 * Math.sin(now * 1.6), 0, TAU); c.stroke(); c.restore();
+    },
+    script() {
+      if (!working("script_writer")) return;
       for (let i = 0; i < 6; i++) {
         const ph = (now * 0.6 + i / 6) % 1;
-        c.fillStyle = `rgba(255,212,0,${1 - ph})`; c.font = "700 11px Inter";
-        c.fillText("abcdefghijk"[(i + Math.floor(now * 4)) % 11], r.x + 230 + i * 8, r.y + 140 - ph * 50);
+        c_text(`${"KIagent"[(i + Math.floor(now * 3)) % 7]}`, 300 + i * 9, 122 - ph * 46, `rgba(245,167,0,${1 - ph})`);
       }
-    }
-    // tonstudio
-    {
-      const r = ROOM.audio, on = agentWorking("voice");
-      c.fillStyle = on ? (Math.sin(now * 6) > -0.3 ? "#ff3b3b" : "#7a1d1d") : "#3a1d22";
-      rr(c, r.x + 250, r.y + 190, 80, 24, 5); c.fill();
-      c.font = "800 12px Inter"; c.fillStyle = on ? "#fff" : "#6a4a50"; c.fillText("ON AIR", r.x + 266, r.y + 207);
-      for (let i = 0; i < 10; i++) {
-        const lvl = on ? (0.3 + 0.7 * Math.abs(Math.sin(now * (5 + i) + i))) : 0.15;
-        c.fillStyle = lvl > 0.8 ? "#ff5c6c" : "#35d07f"; c.fillRect(r.x + 250 + i * 12, r.y + 148 - lvl * 36, 6, lvl * 36);
+    },
+    audio(c) {
+      const on = working("voice");
+      for (let i = 0; i < 14; i++) {
+        const lvl = on ? 0.25 + 0.75 * Math.abs(Math.sin(now * (5 + i * 0.7) + i)) : 0.12;
+        c.fillStyle = lvl > 0.82 ? "#ff375f" : "#30d158"; rr(c, 340 + i * 12, 142 - lvl * 40, 7, lvl * 40, 2); c.fill();
       }
+      c.fillStyle = on ? (Math.sin(now * 6) > -0.3 ? "#ff3b30" : "#8a1f1a") : P.line; rr(c, 330, 186, 84, 26, 13); c.fill();
+      c.font = "700 11.5px -apple-system, Inter, sans-serif"; c.fillStyle = on ? "#fff" : P.text3; c.fillText("ON AIR", 349, 203);
       if (on) {
-        c.strokeStyle = "rgba(255,92,108,.6)"; c.lineWidth = 2;
-        for (let k = 1; k <= 3; k++) { const ph = (now * 1.2 + k / 3) % 1; c.globalAlpha = 1 - ph; c.beginPath(); c.arc(r.x + 115, r.y + 108, 10 + ph * 40, -1.2, 0.2); c.stroke(); }
+        c.strokeStyle = "rgba(255,55,95,.6)"; c.lineWidth = 2;
+        for (let k = 0; k < 3; k++) { const ph = (now * 1.2 + k / 3) % 1; c.globalAlpha = 1 - ph; c.beginPath(); c.arc(135, 135, 12 + ph * 42, -1.3, 0.3); c.stroke(); }
         c.globalAlpha = 1;
       }
-    }
-    // archive scanner
-    if (agentWorking("visuals")) {
-      const r = ROOM.archive, row = Math.floor(now * 1.5) % 3, x = r.x + 44 + ((now * 120) % 200);
-      c.fillStyle = "rgba(53,208,127,.35)"; c.fillRect(x - 6, r.y + 126 + row * 70, 12, 34);
-    }
-    // cutting room screens + render farm LEDs
-    {
-      const r = ROOM.cut, ed = ag.editor || {}, on = ed.status === "working";
-      [[130, 116], [183, 112], [236, 116]].forEach(([dx, dy], i) => {
-        c.fillStyle = on ? hexA(["#ff9a3d", "#4da3ff", "#ffd400"][i], .55 + .2 * Math.sin(now * 4 + i)) : "#1a2030";
-        c.fillRect(r.x + dx + 2, r.y + dy + 1, 40, 6);
-      });
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 6; j++) {
-        const lit = on ? Math.sin(now * (8 + j) + i * 3 + j) > 0 : (i + j + Math.floor(now)) % 7 === 0;
-        c.fillStyle = lit ? (on ? "#ff9a3d" : "#35d07f") : "#2a2f3a";
-        c.fillRect(r.x + 338 + j * 8, r.y + 120 + i * 56, 5, 4);
-        c.fillRect(r.x + 338 + j * 8, r.y + 132 + i * 56, 5, 4);
+    },
+    archive(c) {
+      if (!working("visuals")) return;
+      const row = Math.floor(now * 1.4) % 3, x = 50 + ((now * 160) % 250);
+      c.fillStyle = "rgba(48,180,90,.3)"; rr(c, x - 8, 106 + row * 58, 16, 42, 4); c.fill();
+    },
+    cut(c, r, ag) {
+      const on = ag.editor?.status === "working";
+      [[192, 112], [265, 108], [338, 112]].forEach(([x, y], i) => { c.fillStyle = on ? hexA(["#ff6a2b", "#0a84ff", "#ffcc00"][i], 0.75 + 0.2 * Math.sin(now * 4 + i)) : "#3a3a3c"; rr(c, x + 2, y + 1, 56, 6, 2); c.fill(); });
+      if (on && ag.editor.progress != null) {
+        c.fillStyle = P.line; rr(c, 180, 236, 230, 8, 4); c.fill();
+        c.fillStyle = "#ff6a2b"; rr(c, 180, 236, 230 * ag.editor.progress / 100, 8, 4); c.fill();
+        c.font = "600 11px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.fillText(`Rendering ${Math.round(ag.editor.progress)} %`, 180, 262);
       }
-      if (on && ed.progress != null) {
-        c.fillStyle = "#0b0e14"; rr(c, r.x + 120, r.y + 240, 170, 14, 7); c.fill();
-        c.fillStyle = "#ff9a3d"; rr(c, r.x + 120, r.y + 240, 170 * ed.progress / 100, 14, 7); c.fill();
-        c.font = "700 10px Inter"; c.fillStyle = "#ffd8b0"; c.fillText(`RENDER ${Math.round(ed.progress)}%`, r.x + 172, r.y + 274);
+    },
+    farm(c) {
+      const on = working("editor");
+      for (let row = 0; row < 2; row++) for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) {
+        const lit = on ? Math.sin(now * (7 + j) + i * 2 + row * 3 + j) > 0.1 : (i + j + row + Math.floor(now / 2)) % 9 === 0;
+        c.fillStyle = lit ? (on ? "#0a84ff" : "#34c759") : P.line;
+        c.beginPath(); c.arc(54 + i * 88 + j * 14, 116 + row * 100, 3, 0, TAU); c.fill();
       }
-    }
-    // approval room pulse
-    {
-      const r = ROOM.approve, waiting = [...pkgs.values()].some((p) => p.room === "approve" && p.status === "awaiting_approval" && !p.carriedBy);
-      if (waiting) {
-        c.save(); c.strokeStyle = `rgba(255,165,61,${0.4 + 0.4 * Math.sin(now * 4)})`; c.lineWidth = 6;
-        c.strokeRect(r.x + 8, r.y + 8, r.w - 16, r.h - 16); c.restore();
-        c.font = "800 13px Inter"; c.fillStyle = "#ffa53d";
-        c.fillText("▶ VIDEO WARTET – KLICK ZUM PRÜFEN", r.x + 86, r.y + 120);
+      if (on) { c.font = "600 11px -apple-system, Inter, sans-serif"; c.fillStyle = "#0a84ff"; c.fillText("12 Kerne aktiv", 40, 270); }
+    },
+    server(c) {
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 8; j++) {
+        const lit = Math.sin(now * 3 + i * 1.3 + j * 0.9) > 0.55;
+        c.fillStyle = lit ? "#34c759" : P.line; c.fillRect(62 + i * 100, 108 + j * 16, 8, 4);
+        c.fillStyle = lit && j % 3 === 0 ? "#0a84ff" : P.line; c.fillRect(74 + i * 100, 108 + j * 16, 8, 4);
       }
-    }
-    // uplink shaft glow
-    {
-      const r = ROOM.send, cx = r.x + 110, cy = r.y + 215, on = agentWorking("publisher");
-      const g = c.createRadialGradient(cx, cy, 5, cx, cy, 58);
-      g.addColorStop(0, on ? "rgba(255,79,216,.55)" : "rgba(255,79,216,.12)"); g.addColorStop(1, "rgba(0,0,0,0)");
-      c.fillStyle = g; c.beginPath(); c.arc(cx, cy, 58, 0, TAU); c.fill();
-    }
-    // room status lamps + alarms
-    for (const [key, h] of Object.entries(HOME)) {
-      const r = ROOM[h.room], s = ag[key]?.status || "idle";
-      const col = { working: "#4da3ff", idle: "#35d07f", error: "#ff5c6c", paused: "#6b7280", waiting: "#a78bfa" }[s] || "#6b7280";
-      const lx = r.x + r.w - 26, ly = r.y + 26;
-      c.fillStyle = col; c.beginPath(); c.arc(lx, ly, 6 + (s === "working" ? Math.sin(now * 6) : 0), 0, TAU); c.fill();
-      c.fillStyle = hexA("#000000", 0);
-      if (s === "error") {
-        c.fillStyle = `rgba(255,40,60,${0.08 + 0.08 * Math.sin(now * 5)})`; c.fillRect(r.x, r.y, r.w, r.h);
+    },
+    power(c) {
+      const sp = Object.values(opts.getAgents()).some((a) => a.status === "working") ? 6 : 1.5;
+      for (let i = 0; i < 3; i++) {
+        const cx = 110 + i * 170;
+        c.save(); c.translate(cx, 150); c.rotate(now * sp + i);
+        c.fillStyle = P.text3; for (let k = 0; k < 4; k++) { c.rotate(TAU / 4); c.beginPath(); c.ellipse(16, 0, 18, 7, 0, 0, TAU); c.fill(); }
+        c.restore();
       }
-      if (s === "paused") { c.fillStyle = "rgba(0,0,0,.25)"; c.fillRect(r.x, r.y, r.w, r.h); }
-    }
-    // packages
-    for (const p of pkgs.values()) if (p.vis !== false && !p.launching && !p.carriedBy) drawPkg(c, p);
-    // effects (under agents)
-    for (const e of effects) drawEffect(c, e);
-    // agents
-    const order = Object.values(agents).sort((a, b) => a.y - b.y);
-    for (const a of order) drawAgent(c, a);
-    for (const p of pkgs.values()) if (p.carriedBy) drawPkg(c, p);
-    for (const a of order) drawBubble(c, a);
-  }
+    },
+    approve(c, r) {
+      const waiting = [...pkgs.values()].filter((p) => p.room === "approve" && p.status === "awaiting_approval" && !p.carriedBy).length;
+      if (!waiting) return;
+      c.save(); c.strokeStyle = `rgba(255,149,0,${0.45 + 0.4 * Math.sin(now * 4)})`; c.lineWidth = 4; rr(c, 4, 4, r.w - 8, r.h - 8, 14); c.stroke(); c.restore();
+      const t = waiting === 1 ? "1 Video wartet · Klicken zum Prüfen" : `${waiting} Videos warten · Klicken zum Prüfen`;
+      c.font = "600 12.5px -apple-system, Inter, sans-serif";
+      const w = c.measureText(t).width + 24;
+      c.fillStyle = "#ff9500"; rr(c, 300 - w / 2, 262, w, 26, 13); c.fill();
+      c.fillStyle = "#fff"; c.textAlign = "center"; c.fillText(t, 300, 279); c.textAlign = "left";
+    },
+    send(c) {
+      const on = working("publisher");
+      const g = c.createRadialGradient(130, 175, 4, 130, 175, 52);
+      g.addColorStop(0, on ? "rgba(191,90,242,.75)" : "rgba(191,90,242,.18)"); g.addColorStop(1, "rgba(191,90,242,0)");
+      c.fillStyle = g; c.beginPath(); c.arc(130, 175, 52, 0, TAU); c.fill();
+    },
+  };
+  let c_ctx = null;
+  function c_text(t, x, y, col) { c_ctx.font = "700 12px -apple-system, Inter, sans-serif"; c_ctx.fillStyle = col; c_ctx.fillText(t, x, y); }
 
-  function drawPkg(c, p) {
-    const col = p.status === "failed" || p.status === "publish_failed" ? "#ff5c6c"
-      : p.status === "awaiting_approval" ? "#ffa53d"
-      : p.status === "published" || p.status === "ready" ? "#35d07f"
-      : p.status === "rejected" ? "#6b7280" : "#ffd400";
-    const x = p.x, y = p.y;
-    c.fillStyle = "rgba(0,0,0,.4)"; c.beginPath(); c.ellipse(x + 2, y + 4, 10, 6, 0, 0, TAU); c.fill();
-    if (p.status === "awaiting_approval") {
-      c.fillStyle = hexA("#ffa53d", .25 + .2 * Math.sin(now * 5)); c.beginPath(); c.arc(x, y, 16, 0, TAU); c.fill();
+  // ---------------- billboards: agents, packages, bubbles (world coords) ----------------
+  function agentWorld(a) {
+    if (a.ride) {
+      const k = ease(Math.min(1, (now - a.ride.t0) / a.ride.dur));
+      if (view === "all") {
+        const p0 = project(a.ride.from, ELEV.inn), p1 = project(a.ride.to, ELEV.inn);
+        return { x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, riding: true };
+      }
+      return null;
     }
-    c.fillStyle = col; c.beginPath(); c.arc(x, y, 9, 0, TAU); c.fill();
-    c.fillStyle = "rgba(0,0,0,.55)";
-    for (let i = 0; i < 5; i++) { const a = i / 5 * TAU + now * (p.carriedBy ? 3 : 0); c.beginPath(); c.arc(x + Math.cos(a) * 5, y + Math.sin(a) * 5, 1.6, 0, TAU); c.fill(); }
-    c.fillStyle = "#111"; c.beginPath(); c.arc(x, y, 2, 0, TAU); c.fill();
-    if (cam.z > 0.75) {
-      c.font = "700 9px ui-monospace, monospace"; c.fillStyle = "rgba(255,255,255,.75)";
-      c.fillText(`#${p.id}`, x - 8, y + 21);
-    }
+    if (!visibleFloor(a.floor)) return null;
+    const p = project(a.floor, a);
+    return { x: p.x, y: p.y };
   }
-
-  function drawAgent(c, a) {
+  function drawAvatar(c, a, w, scale) {
     const col = AGENT_COLOR[a.key], s = a.srv.status;
-    const working = s === "working" && !a.moving && !a.job;
-    c.save(); c.translate(a.x, a.y);
-    if (s === "paused") c.globalAlpha = .55;
-    // selection ring
-    if (selectedAgent === a.key) { c.strokeStyle = "#fff"; c.lineWidth = 2; c.setLineDash([4, 4]); c.beginPath(); c.arc(0, 0, 24, now * 2, now * 2 + TAU); c.stroke(); c.setLineDash([]); }
-    // working glow
-    if (working) { c.fillStyle = hexA(col, .18 + .1 * Math.sin(now * 5)); c.beginPath(); c.arc(0, 0, 26, 0, TAU); c.fill(); }
-    // shadow
-    c.fillStyle = "rgba(0,0,0,.45)"; c.beginPath(); c.ellipse(3, 5, 15, 11, 0, 0, TAU); c.fill();
-    c.rotate(a.dir + Math.PI / 2);
-    // legs / feet
-    const sw = a.moving ? Math.sin(a.walk) * 7 : 0;
-    c.fillStyle = "#1b1f29";
-    c.beginPath(); c.ellipse(-6, -sw, 4, 6, 0, 0, TAU); c.fill();
-    c.beginPath(); c.ellipse(6, sw, 4, 6, 0, 0, TAU); c.fill();
-    // arms
-    const arm = working ? Math.sin(now * 14) * 2.5 : (a.moving ? -sw * 0.6 : 0);
-    c.fillStyle = col;
-    c.beginPath(); c.ellipse(-13, -2 + arm, 4, 6, 0, 0, TAU); c.fill();
-    c.beginPath(); c.ellipse(13, -2 - arm, 4, 6, 0, 0, TAU); c.fill();
-    // body (shoulders)
-    c.fillStyle = col; rr(c, -12, -7, 24, 15, 7); c.fill();
-    c.strokeStyle = "rgba(0,0,0,.35)"; c.lineWidth = 1.5; c.stroke();
-    // head
-    c.fillStyle = SKIN[a.key]; c.beginPath(); c.arc(0, -1, 7.5, 0, TAU); c.fill();
-    c.fillStyle = "rgba(40,30,20,.85)"; c.beginPath(); c.arc(0, 1.5, 7.5, 0.15, Math.PI - 0.15); c.fill(); // hair
-    if (a.key === "voice") { c.strokeStyle = "#222"; c.lineWidth = 2.5; c.beginPath(); c.arc(0, 0, 9, Math.PI + 0.3, TAU - 0.3); c.stroke(); }
+    const busy = s === "working" && !a.moving && !a.job;
+    c.save(); c.translate(w.x, w.y); c.scale(scale, scale);
+    if (s === "paused") c.globalAlpha = 0.5;
+    if (busy) { c.fillStyle = hexA(col, 0.16 + 0.08 * Math.sin(now * 4)); c.beginPath(); c.arc(0, 0, 28 + 2 * Math.sin(now * 4), 0, TAU); c.fill(); }
+    if (a.moving) { // heading cone like a maps location puck
+      const g = c.createRadialGradient(0, 0, 4, 0, 0, 40);
+      g.addColorStop(0, hexA(col, 0.35)); g.addColorStop(1, hexA(col, 0));
+      c.fillStyle = g; c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, 40, a.dir - 0.55, a.dir + 0.55); c.closePath(); c.fill();
+    }
+    const bob = a.moving ? Math.abs(Math.sin(a.walk)) * -3 : 0;
+    c.fillStyle = "rgba(0,0,0,.18)"; c.beginPath(); c.ellipse(0, 15, 12, 4, 0, 0, TAU); c.fill();
+    c.translate(0, bob);
+    c.shadowColor = "rgba(0,0,0,.25)"; c.shadowBlur = 8; c.shadowOffsetY = 2;
+    c.fillStyle = P.avatar; c.beginPath(); c.arc(0, 0, 15, 0, TAU); c.fill();
+    c.shadowColor = "transparent";
+    c.strokeStyle = col; c.lineWidth = 3; c.beginPath(); c.arc(0, 0, 15, 0, TAU); c.stroke();
+    if (selectedAgent === a.key) { c.strokeStyle = hexA(col, 0.6); c.lineWidth = 2; c.setLineDash([3, 4]); c.beginPath(); c.arc(0, 0, 21, now, now + TAU); c.stroke(); c.setLineDash([]); }
+    c.save(); c.translate(-9, -9); c.scale(0.75, 0.75); c.strokeStyle = col; c.lineWidth = 2.2; c.lineCap = "round"; c.lineJoin = "round"; c.stroke(path(a.key)); c.restore();
+    if (s === "error") { c.fillStyle = "#ff3b30"; c.beginPath(); c.arc(11, -11, 6, 0, TAU); c.fill(); c.fillStyle = "#fff"; c.font = "700 9px sans-serif"; c.textAlign = "center"; c.fillText("!", 11, -8); c.textAlign = "left"; }
     c.restore();
-    // icon badge
-    if (cam.z > 0.55) {
-      c.font = "15px system-ui"; c.textAlign = "center";
-      c.fillText(a.srv.icon || "", a.x, a.y - 22);
-      c.font = "700 10px Inter, sans-serif"; c.fillStyle = "rgba(255,255,255,.85)";
-      c.fillText(a.srv.name || a.key, a.x, a.y + 30);
-      c.textAlign = "left";
-    }
   }
-
-  function drawBubble(c, a) {
+  function drawPkg(c, p, w, scale) {
+    const col = p.status === "failed" || p.status === "publish_failed" ? "#ff3b30" : p.status === "awaiting_approval" ? "#ff9500"
+      : p.status === "published" || p.status === "ready" ? "#34c759" : p.status === "rejected" ? "#8e8e93" : "#0a84ff";
+    const sz = (p.small ? 13 : 18) * scale;
+    c.save(); c.translate(w.x, w.y);
+    if (p.status === "awaiting_approval" && !p.carriedBy) { c.fillStyle = `rgba(255,149,0,${0.18 + 0.12 * Math.sin(now * 5)})`; c.beginPath(); c.arc(0, 0, sz * 1.05, 0, TAU); c.fill(); }
+    c.shadowColor = "rgba(0,0,0,.22)"; c.shadowBlur = 6 * scale; c.shadowOffsetY = 2 * scale;
+    c.fillStyle = P.avatar; rr(c, -sz / 2, -sz / 2, sz, sz, 4 * scale); c.fill();
+    c.shadowColor = "transparent";
+    c.strokeStyle = col; c.lineWidth = 2 * scale; rr(c, -sz / 2, -sz / 2, sz, sz, 4 * scale); c.stroke();
+    c.fillStyle = col; c.beginPath(); c.moveTo(-sz * 0.15, -sz * 0.22); c.lineTo(sz * 0.25, 0); c.lineTo(-sz * 0.15, sz * 0.22); c.closePath(); c.fill();
+    if (cam.z * scale > 0.6 && !p.small) { c.font = `600 ${9.5 * scale}px -apple-system, Inter, sans-serif`; c.fillStyle = P.text2; c.textAlign = "center"; c.fillText(`#${p.id}`, 0, sz * 0.5 + 11 * scale); c.textAlign = "left"; }
+    c.restore();
+  }
+  function drawBubble(c, a, w, scale) {
     const s = a.srv.status;
-    let text = null, col = "#e8ebf2", border = "rgba(255,255,255,.15)";
-    if (a.job) text = a.job.phase === "pickup" ? "holt Video …" : `bringt #${a.job.pkg} → ${ROOM[a.job.to].name}`;
+    let text = null, col = P.text;
+    if (a.ride) text = `Aufzug → Ebene ${FLOORS[a.ride.to].lvl}`;
+    else if (a.job) text = a.job.phase === "pickup" ? "Holt Video …" : `Bringt #${a.job.pkg} → ${ROOM[a.job.to].name}`;
     else if (s === "working") text = a.srv.task;
-    else if (s === "error") { text = "⚠ " + (a.srv.task || "Fehler"); col = "#ffb3bb"; border = "rgba(255,92,108,.6)"; }
-    else if (s === "paused") text = "💤 pausiert";
-    if (!text || cam.z < 0.5) return;
-    text = text.length > 38 ? text.slice(0, 37) + "…" : text;
-    c.font = "600 11px Inter, sans-serif";
-    const w = c.measureText(text).width + 16, x = a.x - w / 2, y = a.y - 62;
-    c.fillStyle = "rgba(10,12,18,.9)"; rr(c, x, y, w, 24, 8); c.fill();
-    c.strokeStyle = border; c.lineWidth = 1; c.stroke();
-    c.beginPath(); c.moveTo(a.x - 5, y + 24); c.lineTo(a.x, y + 31); c.lineTo(a.x + 5, y + 24); c.fillStyle = "rgba(10,12,18,.9)"; c.fill();
-    c.fillStyle = col; c.fillText(text, x + 8, y + 16);
-    if (s === "working" && !a.job && a.srv.progress != null) {
-      c.fillStyle = "rgba(255,255,255,.1)"; c.fillRect(x + 6, y + 20, w - 12, 2);
-      c.fillStyle = AGENT_COLOR[a.key]; c.fillRect(x + 6, y + 20, (w - 12) * a.srv.progress / 100, 2);
+    else if (s === "error") { text = a.srv.task || "Fehler"; col = "#ff3b30"; }
+    else if (s === "paused") text = "Pausiert";
+    if (!text || cam.z * scale < 0.38) return;
+    text = text.length > 40 ? text.slice(0, 39) + "…" : text;
+    const fs = 11.5 * scale;
+    c.font = `500 ${fs}px -apple-system, BlinkMacSystemFont, Inter, sans-serif`;
+    const tw = c.measureText(text).width, bw = tw + 22 * scale, bh = 24 * scale, x = w.x - bw / 2, y = w.y - 52 * scale;
+    c.save(); c.shadowColor = "rgba(0,0,0,.16)"; c.shadowBlur = 10 * scale; c.shadowOffsetY = 2 * scale;
+    c.fillStyle = P.glass; rr(c, x, y, bw, bh, bh / 2); c.fill(); c.restore();
+    c.strokeStyle = P.glassLine; c.lineWidth = 1; rr(c, x, y, bw, bh, bh / 2); c.stroke();
+    c.fillStyle = AGENT_COLOR[a.key]; c.beginPath(); c.arc(x + 10 * scale, y + bh / 2, 3 * scale, 0, TAU); c.fill();
+    c.fillStyle = col; c.fillText(text, x + 17 * scale, y + bh / 2 + fs * 0.35);
+    if (s === "working" && !a.job && !a.ride && a.srv.progress != null) {
+      c.fillStyle = P.line; rr(c, x + 12 * scale, y + bh - 4 * scale, bw - 24 * scale, 2 * scale, 1); c.fill();
+      c.fillStyle = AGENT_COLOR[a.key]; rr(c, x + 12 * scale, y + bh - 4 * scale, (bw - 24 * scale) * a.srv.progress / 100, 2 * scale, 1); c.fill();
     }
   }
-
   function drawEffect(c, e) {
     const k = (now - e.t) / (e.life || 1.2);
+    if (e.floor != null && !visibleFloor(e.floor)) return;
+    const sc = view === "all" ? 0.75 : 1;
     if (e.kind === "ring") {
-      c.strokeStyle = hexA(e.color, 1 - k); c.lineWidth = 3;
-      c.beginPath(); c.arc(e.x, e.y, 10 + k * 40, 0, TAU); c.stroke();
-    } else if (e.kind === "pop") {
-      c.globalAlpha = 1 - k; c.font = "16px system-ui"; c.fillText(e.text, e.x - 8, e.y - k * 25); c.globalAlpha = 1;
+      const w = project(e.floor, e);
+      c.strokeStyle = hexA(e.color, 1 - k); c.lineWidth = 2.5; c.beginPath(); c.ellipse(w.x, w.y, (12 + k * 36) * sc, (12 + k * 36) * sc * (view === "all" ? STACK.d * 1.6 : 1), 0, 0, TAU); c.stroke();
+    } else if (e.kind === "ding") {
+      const w = project(e.floor, { x: ELEV.x + ELEV.w / 2, y: ELEV.y + 10 });
+      c.globalAlpha = 1 - k; c.fillStyle = "#0a84ff"; c.font = "600 12px -apple-system, Inter, sans-serif"; c.textAlign = "center";
+      c.fillText("●", w.x, w.y - k * 14); c.textAlign = "left"; c.globalAlpha = 1;
     } else if (e.kind === "launch") {
-      const p = e.p;
-      if (k < 0.3) { const q = k / 0.3; p.x = e.sx + (e.x - e.sx) * q; p.y = e.sy + (e.y - e.sy) * q; drawPkg(c, p); }
+      const p = e.p, w = project(e.floor, e);
+      if (k < 0.3) { const q = k / 0.3; const s = project(e.floor, { x: e.sx + (e.x - e.sx) * q, y: e.sy + (e.y - e.sy) * q }); drawPkg(c, p, s, sc); }
       else {
-        const q = (k - 0.3) / 0.7;
-        c.fillStyle = `rgba(255,79,216,${0.6 * (1 - q)})`; c.fillRect(e.x - 14, 0, 28, e.y);
-        c.fillStyle = `rgba(255,255,255,${0.9 * (1 - q)})`; c.fillRect(e.x - 4, 0, 8, e.y);
-        c.strokeStyle = `rgba(53,208,127,${1 - q})`; c.lineWidth = 4; c.beginPath(); c.arc(e.x, e.y, 20 + q * 80, 0, TAU); c.stroke();
-        c.globalAlpha = 1 - q; c.font = "800 16px Inter"; c.fillStyle = "#35d07f"; c.fillText("ONLINE! 🚀", e.x + 30, e.y - 40 - q * 30); c.globalAlpha = 1;
+        const q = (k - 0.3) / 0.7, top = view === "all" ? -300 : w.y - 400;
+        const g = c.createLinearGradient(0, top, 0, w.y);
+        g.addColorStop(0, "rgba(191,90,242,0)"); g.addColorStop(1, `rgba(191,90,242,${0.55 * (1 - q)})`);
+        c.fillStyle = g; c.fillRect(w.x - 16 * sc, top, 32 * sc, w.y - top);
+        c.fillStyle = `rgba(255,255,255,${0.85 * (1 - q)})`; c.fillRect(w.x - 3 * sc, top, 6 * sc, w.y - top);
+        const ty = w.y - (q * (w.y - top));
+        drawPkg(c, { ...p, status: "published", small: false }, { x: w.x, y: ty }, sc);
+        c.globalAlpha = 1 - q; c.font = "700 15px -apple-system, Inter, sans-serif"; c.fillStyle = "#34c759"; c.fillText("Online", w.x + 26, w.y - 30 - q * 20); c.globalAlpha = 1;
       }
       if (k >= 0.99) { p.launching = false; p.launched = true; }
     }
   }
 
-  // ---------------- camera & render loop ----------------
-  function resize() {
-    const r = canvas.parentElement.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
-    canvas.style.width = r.width + "px"; canvas.style.height = r.height + "px";
-    const nz = Math.min(r.width / W, r.height / H) * 0.98;
-    if (cam.z === fitZ) cam.z = nz;
-    fitZ = nz;
+  // ---------------- frame ----------------
+  function drawStackChrome(c) {
+    const S = STACK;
+    // elevator shaft (behind floors)
+    for (let fi = 0; fi < FLOORS.length - 1; fi++) {
+      const a = project(fi, { x: ELEV.x + ELEV.w / 2, y: CY }), b = project(fi + 1, { x: ELEV.x + ELEV.w / 2, y: CY });
+      c.fillStyle = isDark() ? "rgba(10,132,255,.08)" : "rgba(0,111,255,.07)";
+      c.fillRect(a.x - 26, a.y, 52, b.y - a.y);
+      c.strokeStyle = isDark() ? "rgba(10,132,255,.35)" : "rgba(0,111,255,.3)"; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(a.x - 26, a.y); c.lineTo(b.x - 26, b.y); c.moveTo(a.x + 26, a.y); c.lineTo(b.x + 26, b.y); c.stroke();
+    }
+    // surface line above the top floor
+    c.strokeStyle = P.text3; c.setLineDash([4, 8]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(-200, -26); c.lineTo(FW + FH * S.c + 20, -26); c.stroke(); c.setLineDash([]);
+    c.font = "600 12px -apple-system, Inter, sans-serif"; c.fillStyle = P.text3; c.fillText("OBERFLÄCHE", -200, -34);
   }
-  function fit() { cam = { x: W / 2, y: H / 2, z: fitZ }; }
-  function toWorld(px, py) {
-    const r = canvas.getBoundingClientRect();
-    return { x: (px - r.left - r.width / 2) / cam.z + cam.x, y: (py - r.top - r.height / 2) / cam.z + cam.y };
+  function drawSlab(c, fi) {
+    const S = STACK, th = 16;
+    const A = project(fi, { x: 0, y: FH }), B = project(fi, { x: FW, y: FH }), C = project(fi, { x: FW, y: 0 });
+    c.fillStyle = P.side; c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(B.x, B.y); c.lineTo(B.x, B.y + th); c.lineTo(A.x, A.y + th); c.closePath(); c.fill();
+    c.fillStyle = P.side2; c.beginPath(); c.moveTo(B.x, B.y); c.lineTo(C.x, C.y); c.lineTo(C.x, C.y + th); c.lineTo(B.x, B.y + th); c.closePath(); c.fill();
+    c.save(); c.shadowColor = "rgba(0,0,0,.18)"; c.shadowBlur = 40; c.shadowOffsetY = 26;
+    c.fillStyle = "rgba(0,0,0,0.001)"; c.beginPath(); c.moveTo(A.x, A.y + th); c.lineTo(B.x, B.y + th); c.lineTo(B.x - 20, B.y + th); c.fill(); c.restore();
+    // floor label
+    const L = project(fi, { x: 0, y: FH / 2 });
+    c.textAlign = "right";
+    c.font = "700 30px -apple-system, BlinkMacSystemFont, Inter, sans-serif"; c.fillStyle = P.text; c.fillText(FLOORS[fi].lvl, L.x - 26, L.y + 4);
+    c.font = "500 14px -apple-system, Inter, sans-serif"; c.fillStyle = P.text2; c.fillText(FLOORS[fi].name, L.x - 26, L.y + 24);
+    c.textAlign = "left";
   }
 
   function frame() {
     if (!running) return;
-    const tNow = performance.now();
-    const dt = Math.min(0.05, (tNow - t0) / 1000);
-    t0 = tNow; now += dt;
+    const tn = performance.now(), dt = Math.min(0.05, (tn - t0) / 1000);
+    t0 = tn; now += dt;
     step(dt);
-    const dpr = window.devicePixelRatio || 1;
-    const cw = canvas.width / dpr, ch = canvas.height / dpr;
+    const dpr = window.devicePixelRatio || 1, cw = canvas.width / dpr, ch = canvas.height / dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#040507"; ctx.fillRect(0, 0, cw, ch);
+    ctx.fillStyle = P.ground; ctx.fillRect(0, 0, cw, ch);
     ctx.translate(cw / 2, ch / 2); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
-    ctx.drawImage(staticLayer, 0, 0, W, H);
-    drawDynamic(ctx);
-    // scanlines
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "rgba(255,255,255,.012)";
-    for (let y = 0; y < ch; y += 3) ctx.fillRect(0, y, cw, 1);
-    hud.querySelector(".bk-clock").textContent = new Date().toLocaleTimeString("de-DE");
+    c_ctx = ctx;
+    const order = view === "all" ? [0, 1, 2] : [view];
+    if (view === "all") drawStackChrome(ctx);
+    for (const fi of order) {
+      if (view === "all") drawSlab(ctx, fi);
+      ctx.save();
+      const m = floorMatrix(fi);
+      ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+      ctx.drawImage(layers[fi], 0, 0, FW, FH);
+      drawFloorDynamic(ctx, fi);
+      ctx.restore();
+    }
+    // billboards
+    const stack = view === "all";
+    const sc = stack ? Math.max(0.9, 0.78 / cam.z) : 1;            // avatars keep a readable screen size
+    const pkgSc = stack ? Math.max(0.8, 0.62 / cam.z) : 1;
+    const bubSc = stack ? Math.max(0.9, 10.5 / (11.5 * cam.z)) : 1;
+    const items = [];
+    for (const p of pkgs.values()) {
+      if (p.vis === false || p.launching || p.carriedBy) continue;
+      const fi = pkgFloor(p);
+      if (!visibleFloor(fi)) continue;
+      items.push({ y: project(fi, p).y, draw: () => drawPkg(ctx, p, project(fi, p), pkgSc) });
+    }
+    for (const a of Object.values(agents)) {
+      const w = agentWorld(a);
+      if (!w) continue;
+      a._w = w;
+      items.push({ y: w.y, draw: () => {
+        drawAvatar(ctx, a, w, sc);
+        if (a.carrying != null) { const p = pkgs.get(a.carrying); if (p) drawPkg(ctx, p, { x: w.x + Math.cos(a.dir) * 18 * sc, y: w.y + Math.sin(a.dir) * 18 * sc * (view === "all" ? 0.5 : 1) - 6 * sc }, sc * 0.85); }
+      } });
+    }
+    for (const a of Object.values(agents)) if (!a._w || !agentWorld(a)) a._w = null;
+    items.sort((a, b) => a.y - b.y).forEach((i) => i.draw());
+    for (const e of effects) drawEffect(ctx, e);
+    for (const a of Object.values(agents)) if (a._w && (!stack || a.job || a.ride || ["working", "error"].includes(a.srv.status) || a.key === selectedAgent)) drawBubble(ctx, a, a._w, bubSc);
+    updateFloorButtons();
     if (selectedAgent) renderInfo();
     requestAnimationFrame(frame);
   }
 
-  // ---------------- interaction ----------------
+  // ---------------- camera & input ----------------
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    if (!r.width) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+    canvas.style.width = r.width + "px"; canvas.style.height = r.height + "px";
+    computeFit();
+    if (!userMoved) fit();
+  }
+  function computeFit() {
+    const r = canvas.parentElement.getBoundingClientRect(), b = worldBounds();
+    const topPad = 64, pad = 24, botPad = 50;
+    fitZ = Math.min((r.width - pad * 2) / (b.x1 - b.x0), (r.height - topPad - botPad) / (b.y1 - b.y0));
+    return { b, topPad, pad, r };
+  }
+  function fit() {
+    const { b, topPad, r } = computeFit();
+    cam.z = fitZ;
+    cam.x = (b.x0 + b.x1) / 2;
+    cam.y = (b.y0 + b.y1) / 2 - (64 - 50) / 2 / cam.z;
+    userMoved = false;
+  }
+  function setView(v) {
+    view = v;
+    userMoved = false;
+    fit();
+    try { localStorage.setItem("lugger.bunker.view", String(v)); } catch (e) { /* storage optional */ }
+  }
+  function toWorld(px, py) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (px - r.left - r.width / 2) / cam.z + cam.x, y: (py - r.top - r.height / 2) / cam.z + cam.y };
+  }
   function hit(wp) {
-    for (const a of Object.values(agents)) if (dist(a, wp) < 20) return { type: "agent", a };
-    for (const p of pkgs.values()) if (p.vis !== false && dist(p, wp) < 14) return { type: "pkg", p };
-    const r = roomAt(wp);
-    if (r) return { type: "room", r };
+    for (const a of Object.values(agents)) if (a._w && Math.hypot(a._w.x - wp.x, a._w.y - wp.y) < 18 * (view === "all" ? Math.max(0.9, 0.78 / cam.z) : 1)) return { type: "agent", a };
+    for (const p of pkgs.values()) {
+      if (p.vis === false || p.carriedBy || p.launching) continue;
+      const fi = pkgFloor(p); if (!visibleFloor(fi)) continue;
+      const w = project(fi, p); if (Math.hypot(w.x - wp.x, w.y - wp.y) < 13) return { type: "pkg", p };
+    }
+    const order = view === "all" ? [2, 1, 0] : [view];
+    for (const fi of order) {
+      const local = floorMatrix(fi).inverse().transformPoint(new DOMPoint(wp.x, wp.y));
+      if (local.x < 0 || local.x > FW || local.y < 0 || local.y > FH) continue;
+      return { type: "floor", fi, room: roomAt(fi, local) };
+    }
     return null;
   }
   function bindInput() {
@@ -748,25 +817,25 @@
     canvas.addEventListener("pointermove", (e) => {
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+        if (Math.abs(dx) + Math.abs(dy) > 4) { moved = true; userMoved = true; }
         cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z;
       }
       const h = hit(toWorld(e.clientX, e.clientY));
-      canvas.style.cursor = drag && moved ? "grabbing" : h && h.type !== "room" ? "pointer" : (h?.r?.key === "approve" ? "pointer" : "grab");
+      canvas.style.cursor = drag && moved ? "grabbing" : h && (h.type !== "floor" || view === "all" || h.room?.key === "approve") ? "pointer" : "grab";
       if (h?.type === "pkg") showTip(e, `#${h.p.id} · ${h.p.title}`);
-      else if (h?.type === "agent") showTip(e, `${h.a.srv.name}: ${h.a.srv.task || ""}`);
-      else if (h?.type === "room") showTip(e, h.r.name);
+      else if (h?.type === "agent") showTip(e, `${h.a.srv.name || h.a.key} · ${h.a.srv.task || ""}`);
+      else if (h?.type === "floor") showTip(e, h.room ? `${h.room.name} · Ebene ${FLOORS[h.fi].lvl}` : `Ebene ${FLOORS[h.fi].lvl} · ${FLOORS[h.fi].name}`);
       else tip.hidden = true;
     });
     canvas.addEventListener("pointerup", (e) => {
       if (drag && !moved) {
         const h = hit(toWorld(e.clientX, e.clientY));
         if (h?.type === "pkg") opts.openVideo(h.p.id);
-        else if (h?.type === "agent") { selectedAgent = h.a.key; renderInfo(); }
-        else if (h?.type === "room" && h.r.key === "approve") {
-          const w = [...pkgs.values()].find((p) => p.status === "awaiting_approval");
-          if (w) opts.openVideo(w.id);
-        } else { selectedAgent = null; info.hidden = true; }
+        else if (h?.type === "agent") { selectedAgent = h.a.key; lastInfo = ""; renderInfo(); }
+        else if (h?.type === "floor" && h.room?.key === "approve" && [...pkgs.values()].some((p) => p.status === "awaiting_approval")) {
+          opts.openVideo([...pkgs.values()].find((p) => p.status === "awaiting_approval").id);
+        } else if (h?.type === "floor" && view === "all") setView(h.fi);
+        else { selectedAgent = null; info.hidden = true; }
       }
       drag = null;
     });
@@ -774,38 +843,59 @@
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       const before = toWorld(e.clientX, e.clientY);
-      cam.z = Math.max(fitZ * 0.8, Math.min(3, cam.z * Math.exp(-e.deltaY * 0.0015)));
+      cam.z = Math.max(fitZ * 0.7, Math.min(fitZ * 6, cam.z * Math.exp(-e.deltaY * 0.0015)));
       const after = toWorld(e.clientX, e.clientY);
-      cam.x += before.x - after.x; cam.y += before.y - after.y;
+      cam.x += before.x - after.x; cam.y += before.y - after.y; userMoved = true;
     }, { passive: false });
     hud.querySelector("[data-bk=fit]").onclick = fit;
-    hud.querySelector("[data-bk=in]").onclick = () => (cam.z = Math.min(3, cam.z * 1.25));
-    hud.querySelector("[data-bk=out]").onclick = () => (cam.z = Math.max(fitZ * 0.8, cam.z / 1.25));
+    hud.querySelector("[data-bk=in]").onclick = () => { cam.z = Math.min(fitZ * 6, cam.z * 1.3); userMoved = true; };
+    hud.querySelector("[data-bk=out]").onclick = () => { cam.z = Math.max(fitZ * 0.7, cam.z / 1.3); userMoved = true; };
     hud.querySelector("[data-bk=full]").onclick = () => {
       const el = canvas.parentElement;
-      document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.();
+      try { document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.().catch(() => {}); } catch (e) { /* optional */ }
     };
+    floorBtns.forEach((b) => (b.onclick = () => setView(b.dataset.v === "all" ? "all" : +b.dataset.v)));
     new ResizeObserver(resize).observe(canvas.parentElement);
+    matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", buildLayers);
+    new MutationObserver(buildLayers).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
   function showTip(e, text) {
     const r = canvas.parentElement.getBoundingClientRect();
     tip.hidden = false; tip.textContent = text.length > 90 ? text.slice(0, 89) + "…" : text;
-    tip.style.left = e.clientX - r.left + 14 + "px"; tip.style.top = e.clientY - r.top + 14 + "px";
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - 200) + "px"; tip.style.top = e.clientY - r.top + 16 + "px";
+  }
+  let lastFloorSig = "";
+  function updateFloorButtons() {
+    const ag = opts.getAgents();
+    const sig = view + "|" + Object.keys(HOME).map((k) => ag[k]?.status).join(",");
+    if (sig === lastFloorSig) return;
+    lastFloorSig = sig;
+    floorBtns.forEach((b) => {
+      const v = b.dataset.v === "all" ? "all" : +b.dataset.v;
+      b.classList.toggle("on", v === view);
+      if (v === "all") return;
+      const ks = Object.keys(HOME).filter((k) => ROOM[HOME[k].room].floor === v);
+      b.querySelector(".act").innerHTML = ks.map((k) => `<i class="${ag[k]?.status === "working" ? "w" : ""}" style="${ag[k]?.status === "error" ? "background:#ff3b30" : ag[k]?.status === "paused" ? "background:#8e8e93" : ""}"></i>`).join("");
+    });
   }
   let lastInfo = "";
   function renderInfo() {
     const a = opts.getAgents()[selectedAgent];
     if (!a) return;
-    const html = `<div class="bk-info-h"><span style="font-size:22px">${a.icon}</span><div><b>${a.name}</b><div class="bk-sub">${a.role}</div></div>
-      <button class="bk-x" data-bk="close">×</button></div>
-      <div class="bk-st s-${a.status}">${{ working: "arbeitet", idle: "bereit", paused: "pausiert", error: "Fehler", waiting: "wartet" }[a.status] || a.status}</div>
-      <div class="bk-task">${(a.task || "–").replace(/</g, "&lt;")}</div>
-      ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%"></div></div>` : ""}
-      <div class="bk-sub">${a.video_id ? `Video #${a.video_id} · ` : ""}✓ ${a.processed} erledigt${a.failed ? ` · ✗ ${a.failed}` : ""}</div>
-      <div class="row gap" style="margin-top:8px">
-        <button class="btn small" data-bk="toggle">${a.enabled ? "⏸ Pause" : "▶ Fortsetzen"}</button>
-        ${a.manual ? '<button class="btn small" data-bk="run">⚡ Ausführen</button>' : ""}
-        ${a.video_id ? `<button class="btn small" data-bk="video">🎬 Video</button>` : ""}
+    const col = AGENT_COLOR[a.key];
+    const st = { working: ["Arbeitet", "blue"], idle: ["Bereit", "green"], paused: ["Pausiert", ""], error: ["Fehler", "red"], waiting: ["Wartet", "blue"] }[a.status] || [a.status, ""];
+    const fl = FLOORS[ROOM[HOME[a.key].room].floor];
+    const html = `<div class="bk-info-h"><div class="bk-av" style="background:${col}"><svg class="i" viewBox="0 0 24 24"><path d="${ICONS[a.key]}"/></svg></div>
+      <div style="min-width:0;flex:1"><b>${a.name}</b><div class="bk-sub">${a.role}</div></div>
+      <button class="icon-btn" data-bk="close" aria-label="Schließen"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="row"><span class="chip ${st[1]}">${st[0]}</span><span class="chip">${ROOM[HOME[a.key].room].name} · Ebene ${fl.lvl}</span></div>
+      <div class="bk-task">${String(a.task || "–").replace(/</g, "&lt;")}</div>
+      ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}
+      <div class="bk-sub">${a.video_id ? `Video #${a.video_id} · ` : ""}${a.processed} erledigt${a.failed ? ` · ${a.failed} Fehler` : ""}</div>
+      <div class="row">
+        <button class="btn small" data-bk="toggle">${a.enabled ? "Pausieren" : "Fortsetzen"}</button>
+        ${a.manual ? '<button class="btn small" data-bk="run">Jetzt ausführen</button>' : ""}
+        ${a.video_id ? '<button class="btn small" data-bk="video">Video öffnen</button>' : ""}
       </div>`;
     if (html === lastInfo && !info.hidden) return;
     lastInfo = html; info.innerHTML = html; info.hidden = false;
@@ -816,38 +906,43 @@
   }
 
   // ---------------- public API ----------------
+  const ic = (id) => `<svg class="i"><use href="#${id}"/></svg>`;
   window.Bunker = {
+    ICONS, AGENT_COLOR,
     init(container, options) {
       opts = options;
       container.innerHTML = `
         <canvas class="bk-canvas"></canvas>
         <div class="bk-hud">
-          <div class="bk-title"><span class="bk-dot"></span>BUNKER · EBENE -3 <span class="bk-clock"></span></div>
-          <div class="bk-legend">
-            <span><i style="background:#ffd400"></i>in Arbeit</span><span><i style="background:#ffa53d"></i>wartet auf dich</span>
-            <span><i style="background:#35d07f"></i>online</span><span><i style="background:#ff5c6c"></i>Fehler</span>
+          <div class="glass bk-floors">
+            <button class="bk-floor" data-v="all"><span class="lv">${ic("i-layers")}</span><span class="nm">Alle Ebenen</span></button>
+            ${FLOORS.map((f, i) => `<button class="bk-floor" data-v="${i}"><span class="lv">${f.lvl}</span><span class="nm">${f.name}</span><span class="act"></span></button>`).join("")}
           </div>
-          <div class="bk-btns"><button class="btn small" data-bk="out">−</button><button class="btn small" data-bk="in">+</button>
-            <button class="btn small" data-bk="fit">⌖ Übersicht</button><button class="btn small" data-bk="full">⛶</button></div>
+          <div class="glass bk-btns">
+            <button class="icon-btn" data-bk="out" title="Verkleinern">${ic("i-zout")}</button>
+            <button class="icon-btn" data-bk="in" title="Vergrößern">${ic("i-zin")}</button>
+            <button class="icon-btn" data-bk="fit" title="Einpassen">${ic("i-fit")}</button>
+            <button class="icon-btn" data-bk="full" title="Vollbild">${ic("i-expand")}</button>
+          </div>
         </div>
-        <div class="bk-info" hidden></div><div class="bk-tip" hidden></div>`;
+        <div class="glass bk-legend"><span><i style="background:#0a84ff"></i>In Arbeit</span><span><i style="background:#ff9500"></i>Wartet auf dich</span><span><i style="background:#34c759"></i>Online</span><span><i style="background:#ff3b30"></i>Fehler</span><span>Klick auf eine Etage zum Hineinzoomen</span></div>
+        <div class="glass bk-info" hidden></div><div class="glass bk-tip" hidden></div>`;
       canvas = container.querySelector("canvas");
       ctx = canvas.getContext("2d");
       hud = container.querySelector(".bk-hud");
       info = container.querySelector(".bk-info");
       tip = container.querySelector(".bk-tip");
-      buildStatic();
-      resize(); fit();
+      floorBtns = [...container.querySelectorAll(".bk-floor")];
+      try { const v = localStorage.getItem("lugger.bunker.view"); if (v != null) view = v === "all" ? "all" : +v; } catch (e) { /* optional */ }
+      buildLayers();
       bindInput();
     },
     loadVideos(list) {
       const sorted = [...list].sort((a, b) => a.id - b.id);
-      const done = sorted.filter((v) => v.status === "published" || v.status === "ready").slice(-12).map((v) => v.id);
+      const done = sorted.filter((v) => v.status === "published" || v.status === "ready").slice(-10).map((v) => v.id);
       for (const v of sorted) {
         if ((v.status === "published" || v.status === "ready") && !done.includes(v.id)) continue;
-        const room = roomForVideo(v) || "leit";
-        const p = makePkg(v, room);
-        p.status = v.status;
+        makePkg(v, roomForVideo(v) || "leit");
       }
     },
     video: onVideo,
