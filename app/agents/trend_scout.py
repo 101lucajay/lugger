@@ -9,7 +9,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from .. import config, db, llm
-from ..events import bus
+from ..events import bus, emit_event
 from .base import Agent
 
 IDEAS_SCHEMA = {
@@ -155,3 +155,4 @@ Keine Clickbait-Falschaussagen, keine Finanz- oder Gesundheitsversprechen."""
             added += 1
         self.log(f"{added} neue Videoideen gespeichert")
         bus.publish("ideas", {})
+        emit_event("ideas.found", {"count": added, "titles": [i["title"] for i in ideas][:10]})

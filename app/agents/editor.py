@@ -5,7 +5,7 @@ import json
 import random
 
 from .. import config, db, media
-from ..events import bus
+from ..events import bus, emit_event
 from ..paths import MUSIC_DIR, video_dir
 from .base import AgentError, VideoStageAgent
 
@@ -173,3 +173,6 @@ class Cutter(VideoStageAgent):
         db.update_video(vid, video_path=str(final), thumb_path=str(thumb), duration=round(dur, 2))
         self.advance(vid, status=next_status)
         bus.publish("notify", {"title": "Video fertig", "message": script["title"], "video_id": vid})
+        emit_event("video.ready" if next_status == "awaiting_approval" else "video.approved",
+                   {"id": vid, "title": script["title"], "duration": round(dur, 1), "description": script.get("description", ""),
+                    "hashtags": " ".join(script.get("hashtags", []))})

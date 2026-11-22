@@ -28,3 +28,20 @@ class EventBus:
 
 
 bus = EventBus()
+
+
+# ---- internal domain events (used by the automation engine) ----
+_handlers: list = []
+
+
+def on_event(fn) -> None:
+    _handlers.append(fn)
+
+
+def emit_event(name: str, data: Any | None = None) -> None:
+    for fn in list(_handlers):
+        try:
+            fn(name, data or {})
+        except Exception:  # noqa: BLE001 - an automation must never break the pipeline
+            import traceback
+            traceback.print_exc()

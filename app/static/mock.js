@@ -130,7 +130,8 @@
     const up = upcoming(6);
     agents.producer.next_slot = up[0] || null;
     return { agents: Object.values(agents).map(clone), stats: stats(), autopilot: settings.autopilot, require_approval: settings.require_approval,
-      niche: settings.niche, next_slot: up[0] || null, upcoming: up, platforms: {}, auth: false, demo: true };
+      niche: settings.niche, next_slot: up[0] || null, upcoming: up, platforms: {}, auth: false, demo: true,
+      automations: { total: autos.size, active: [...autos.values()].filter((a) => a.enabled).length, running: [] } };
   }
   function produce(ideaId = null, topic = null) {
     let idea = null;
@@ -141,6 +142,7 @@
     }
     const v = newVideo(topic || idea.title, "queued", NOW(), idea?.id);
     emit("video", clone(v));
+    fireEvent("video.created", { id: v.id, topic: v.topic });
     const p = agents.producer;
     Object.assign(p, { status: "working", task: `Wähle beste Idee: „${v.topic}“`, progress: 50, started_at: NOW(), video_id: v.id }); pushAgent("producer");
     log("producer", `Produktion gestartet: „${v.topic}“`, v.id);
@@ -168,7 +170,7 @@
         for (let i = 0; i < n; i++) { const [t, a, h, sc] = IDEAS[(iid + i) % IDEAS.length]; ideas.push({ id: iid++, title: `${t}${iid > 12 ? " (Update)" : ""}`, angle: a, hook: h, why_now: "Gerade in den News", sources: ["https://www.heise.de"], score: Math.max(5, sc - Math.random()), origin: "trend_scout", status: "new", created_at: NOW() }); }
         scoutJob = null; s.processed++;
         Object.assign(s, { status: "idle", task: "Fertig – wartet auf Arbeit", progress: null });
-        log("trend_scout", `${n} neue Videoideen gespeichert`); emit("ideas", {});
+        log("trend_scout", `${n} neue Videoideen gespeichert`); emit("ideas", {}); fireEvent("ideas.found", { count: n });
       }
       pushAgent("trend_scout");
     } else if (settings.autopilot && ideas.filter((i) => i.status === "new").length < settings.min_idea_backlog) scout();
@@ -201,6 +203,7 @@
         if (st.to === "published") {
           patch.publish_results = { youtube: { ok: true, via: "direct", url: "https://youtube.com/shorts/demo" }, tiktok: { ok: true, via: "upload-post", url: "https://tiktok.com/@demo" }, instagram: { ok: true, via: "upload-post", url: "https://instagram.com/reel/demo" } };
           emit("notify", { title: "Veröffentlicht", message: j.v.title, video_id: j.v.id });
+          setTimeout(() => fireEvent("video.published", { id: j.v.id, title: j.v.title, youtube_url: "https://youtube.com/shorts/demo" }), 200);
         }
         setVideo(j.v, patch);
         Object.assign(a, { status: "idle", task: "Fertig – wartet auf Arbeit", progress: null, video_id: null });
@@ -219,6 +222,80 @@
   let last = performance.now();
   setInterval(() => { const n = performance.now(); tick(Math.min(0.5, (n - last) / 1000)); last = n; }, 200);
 
+  // ---- automations (simulated engine) ----
+  const autos = new Map(); const runs = []; let aid = 1, rid = 1;
+  function addAuto(o, extra = {}) { const a = { id: aid++, description: "", enabled: true, webhook_token: "demo" + aid, last_run_at: null, last_status: null, run_count: 0, created_at: NOW(), updated_at: NOW(), ...o, ...extra }; autos.set(a.id, a); return a; }
+  const autoOut = (a) => ({ ...clone(a), webhook_path: `/hooks/${a.webhook_token}`, running: runs.some((r) => r.automation_id === a.id && r.status === "running") });
+  addAuto({ name: "Neues Video → Discord", description: "Postet jedes veröffentlichte Video in den Community-Discord.", trigger: { type: "event", event: "video.published" },
+    steps: [{ type: "discord", webhook_url: "https://discord.com/api/webhooks/…", message: "🎬 Neues Video online: **{{trigger.data.title}}**" }] });
+  addAuto({ name: "Website-Monitor", description: "Prüft regelmäßig die Kanal-Website.", trigger: { type: "interval", minutes: 5 },
+    steps: [{ type: "http", method: "GET", url: "https://ki-kompakt.example", fail_on_error: false }, { type: "filter", left: "{{steps.1.output.status}}", op: "not_equals", right: "200" },
+      { type: "telegram", bot_token: "…", chat_id: "…", message: "🚨 Website antwortet mit {{steps.1.output.status}}" }] });
+  addAuto({ name: "KI-News am Morgen", description: "Claude recherchiert die KI-News und schickt sie per Telegram.", trigger: { type: "schedule", times: "07:30", days: "1,2,3,4,5" },
+    steps: [{ type: "claude", prompt: "Fasse die 5 wichtigsten KI-News von heute zusammen.", web_search: true }, { type: "telegram", bot_token: "…", chat_id: "…", message: "☀️ KI-News {{date}}\n\n{{steps.1.output}}" }] });
+  addAuto({ name: "Webhook → Videoidee", description: "Themen aus Notion/Shortcuts landen direkt im Ideen-Speicher.", trigger: { type: "webhook" },
+    steps: [{ type: "add_idea", title: "{{trigger.data.title}}" }] });
+  addAuto({ name: "Fehler-Alarm", description: "Meldet Probleme in der Produktion sofort.", trigger: { type: "event", event: "video.failed" },
+    steps: [{ type: "slack", webhook_url: "…", message: "⚠️ {{trigger.data.agent}}: {{trigger.data.error}}" }] }, { enabled: false });
+  // seed history
+  (function () {
+    const mk = (a, t, status, results, trig) => { runs.unshift({ id: rid++, automation_id: a, started_at: t, finished_at: t + 3, status, trigger: trig, results }); const au = autos.get(a); au.last_run_at = t; au.last_status = status; au.run_count++; };
+    mk(3, NOW() - 3600 * 15, "success", [{ n: 1, type: "claude", status: "ok", ms: 8200, output: "1. OpenAI stellt neues Agenten-Framework vor …\n2. EU veröffentlicht Leitlinien zum AI Act …\n3. Google zeigt KI-Brille mit Live-Übersetzung …" }, { n: 2, type: "telegram", status: "ok", ms: 310, output: { status: 200 } }], { type: "schedule", slot: "07:30" });
+    mk(4, NOW() - 3600 * 6, "success", [{ n: 1, type: "add_idea", status: "ok", ms: 12, output: { idea_id: 3 } }], { type: "webhook", data: { title: "Wie KI Wettervorhersagen revolutioniert" } });
+    for (let i = 4; i >= 1; i--) mk(2, NOW() - i * 300, "skipped", [{ n: 1, type: "http", status: "ok", ms: 180, output: { status: 200, body: "<!doctype html>…" } }, { n: 2, type: "filter", status: "skipped", ms: 0, output: "Bedingung nicht erfüllt: „200“ not_equals „200“" }], { type: "interval" });
+    mk(1, NOW() - 5400, "success", [{ n: 1, type: "discord", status: "ok", ms: 260, output: { status: 204 } }], { type: "event", event: "video.published", label: "Video veröffentlicht", data: { title: "Warum KI halluziniert" } });
+  })();
+  function tplRender(v, ctx) {
+    if (typeof v !== "string") return v;
+    return v.replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_, p) => { let c = ctx; for (const k of p.split(".")) { c = c == null ? "" : c[k]; } return c == null ? "" : typeof c === "object" ? JSON.stringify(c) : String(c); });
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function fakeStep(s, ctx) {
+    const r = {}; for (const [k, v] of Object.entries(s)) r[k] = tplRender(v, ctx);
+    await sleep(500 + Math.random() * 900);
+    switch (s.type) {
+      case "http": return { status: 200, body: "<!doctype html><title>OK</title>…" };
+      case "claude": await sleep(1500); return "Demo-Antwort von Claude: 1) Neue Agenten-Modelle 2) KI-Brillen 3) EU AI Act tritt in Phase 2 …";
+      case "discord": return { status: 204 };
+      case "slack": case "telegram": return { status: 200 };
+      case "filter": { const ok = { contains: r.left.includes(r.right), not_contains: !r.left.includes(r.right), equals: r.left === r.right, not_equals: r.left !== r.right, not_empty: !!r.left, gt: +r.left > +r.right, lt: +r.left < +r.right }[r.op]; if (!ok) throw { skip: `Bedingung nicht erfüllt: „${r.left}“ ${r.op} „${r.right}“` }; return { passed: true }; }
+      case "delay": await sleep(Math.min(3, +r.seconds || 0) * 1000); return { waited: +r.seconds || 0 };
+      case "add_idea": { const i = { id: iid++, title: r.title || "Neue Idee", angle: r.angle || "", hook: "", why_now: "", sources: [], score: 8, origin: "automation", status: "new", created_at: NOW() }; ideas.push(i); emit("ideas", {}); return { idea_id: i.id }; }
+      case "produce_video": { const v = produce(null, r.topic || null); return { video_id: v?.id }; }
+      case "run_agent": r.agent === "producer" ? produce() : scout(true); return { agent: r.agent };
+      case "autopilot": settings.autopilot = r.on === "true" || r.on === true; return { autopilot: settings.autopilot };
+      case "log": log("automations", String(r.message)); return r.message;
+    }
+    return null;
+  }
+  async function runAuto(a, trigger) {
+    const run = { id: rid++, automation_id: a.id, started_at: NOW(), finished_at: null, status: "running", trigger, results: [] };
+    runs.unshift(run); if (runs.length > 80) runs.pop();
+    a.last_run_at = NOW(); a.last_status = "running";
+    const pub = () => emit("automation_run", { ...clone(run), automation_name: a.name });
+    pub(); emit("automation", autoOut(a));
+    const ctx = { trigger, steps: {}, date: new Date().toLocaleDateString("de-DE"), time: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }), stats: { published: stats().published, ideas: stats().ideas, awaiting_approval: stats().awaiting_approval } };
+    let status = "success";
+    for (let i = 0; i < a.steps.length; i++) {
+      const s = a.steps[i], t = performance.now(), res = { n: i + 1, type: s.type };
+      try { res.output = await fakeStep(s, ctx); res.status = "ok"; }
+      catch (e) { if (e && e.skip) { res.status = "skipped"; res.output = e.skip; status = "skipped"; } else { res.status = "error"; res.output = String(e); status = "error"; } }
+      res.ms = Math.round(performance.now() - t);
+      run.results.push(res); ctx.steps[String(i + 1)] = res; ctx.steps.last = res; pub();
+      if (status !== "success") break;
+    }
+    run.status = status; run.finished_at = NOW(); a.last_status = status; a.run_count++;
+    log("automations", `„${a.name}“ ${{ success: "erfolgreich", skipped: "übersprungen", error: "mit Fehler beendet" }[status]}`);
+    pub(); emit("automation", autoOut(a));
+    return run;
+  }
+  function fireEvent(name, data) {
+    for (const a of autos.values()) if (a.enabled && a.trigger.type === "event" && a.trigger.event === name) runAuto(a, { type: "event", event: name, label: name, data });
+  }
+  setInterval(() => {
+    for (const a of autos.values()) if (a.enabled && a.trigger.type === "interval" && (!a.last_run_at || NOW() - a.last_run_at > 40) && !runs.some((r) => r.automation_id === a.id && r.status === "running")) runAuto(a, { type: "interval" });
+  }, 3000);
+
   // ---- REST ----
   function respond(data, status = 200) { return Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } })); }
   const realFetch = window.fetch.bind(window);
@@ -230,6 +307,17 @@
     const p = url.pathname.replace(/^\/api\//, "").split("/");
     try {
       if (p[0] === "state") return respond(stateObj());
+      if (p[0] === "automations") {
+        if (p[1] === "runs") return respond(clone(runs.slice(0, +url.searchParams.get("limit") || 30)).map((r) => ({ ...r, automation_name: autos.get(r.automation_id)?.name || "" })));
+        if (p.length === 1 && method === "POST") { if (!body.name) return respond({ detail: "Bitte gib der Automatisierung einen Namen." }, 400); const a = addAuto({ name: body.name, description: body.description || "", enabled: body.enabled !== false, trigger: body.trigger, steps: body.steps || [] }); emit("automation", autoOut(a)); return respond(autoOut(a)); }
+        if (p.length === 1) return respond([...autos.values()].map(autoOut).reverse());
+        const a = autos.get(+p[1]); if (!a) return respond({ detail: "Automatisierung nicht gefunden" }, 404);
+        if (method === "DELETE") { autos.delete(a.id); emit("automation_deleted", { id: a.id }); return respond({ ok: true }); }
+        if (method === "PUT") { Object.assign(a, { name: body.name, description: body.description || "", enabled: body.enabled !== false, trigger: body.trigger, steps: body.steps || [], updated_at: NOW() }); emit("automation", autoOut(a)); return respond(autoOut(a)); }
+        if (p[2] === "toggle") { a.enabled = !!body.enabled; emit("automation", autoOut(a)); return respond(autoOut(a)); }
+        if (p[2] === "run") { const r = runAuto(a, { type: "manual", data: body || {} }); return r.then ? respond({ ok: true, run_id: rid }) : respond({ ok: true }); }
+        if (p[2] === "runs") return respond(clone(runs.filter((r) => r.automation_id === a.id)));
+      }
       if (p[0] === "logs") {
         const vidq = +url.searchParams.get("video_id") || null, lim = +url.searchParams.get("limit") || 200;
         return respond(logs.filter((l) => !vidq || l.video_id === vidq).slice(-lim));

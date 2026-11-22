@@ -54,6 +54,31 @@ CREATE TABLE IF NOT EXISTS logs (
     message TEXT,
     video_id INTEGER
 );
+CREATE TABLE IF NOT EXISTS automations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    enabled INTEGER DEFAULT 1,
+    trigger TEXT,
+    steps TEXT,
+    webhook_token TEXT,
+    last_run_at REAL,
+    last_status TEXT,
+    last_slot TEXT,
+    run_count INTEGER DEFAULT 0,
+    created_at REAL,
+    updated_at REAL
+);
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    automation_id INTEGER,
+    started_at REAL,
+    finished_at REAL,
+    status TEXT,
+    trigger TEXT,
+    results TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runs_auto ON automation_runs(automation_id);
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
 """

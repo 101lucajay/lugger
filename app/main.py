@@ -13,11 +13,12 @@ from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketD
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import automations as auto
 from . import config, db
 from .agents import registry
 from .agents.base import AgentError
 from .agents.producer import next_slot, start_production, upcoming_slots
-from .events import bus
+from .events import bus, emit_event
 from .paths import STATIC_DIR, VIDEOS_DIR, video_dir
 from .publishers.platforms import enabled_platforms
 
@@ -44,8 +45,11 @@ async def lifespan(_app: FastAPI):
     agents = registry.build()
     for a in agents:
         a.start()
+    db.execute("UPDATE automation_runs SET status='error', finished_at=? WHERE status='running'", (__import__("time").time(),))
+    auto.engine.start()
     db.add_log("system", "info", "Agenten-Zentrale gestartet")
     yield
+    await auto.engine.stop()
     for a in agents:
         await a.stop()
 
@@ -56,7 +60,7 @@ app = FastAPI(title="Lugger Agenten-Zentrale", lifespan=lifespan)
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/healthz") or path.startswith("/static/") or _authed(request.cookies):
+    if path in ("/login", "/healthz") or path.startswith(("/static/", "/hooks/")) or _authed(request.cookies):
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"detail": "Nicht angemeldet"}, status_code=401)
@@ -120,7 +124,9 @@ async def state():
             "autopilot": config.get("autopilot"), "require_approval": config.get("require_approval"),
             "niche": config.get("niche"), "next_slot": slot.isoformat() if slot else None,
             "upcoming": [s.isoformat() for s in upcoming_slots(6)] if config.get("autopilot") else [],
-            "platforms": enabled_platforms(), "auth": bool(PASSWORD)}
+            "platforms": enabled_platforms(), "auth": bool(PASSWORD),
+            "automations": {"total": len(auto.list_automations()), "active": sum(1 for a in auto.list_automations() if a["enabled"]),
+                            "running": [dict(id=k, **v) for k, v in auto.engine.active.items()]}}
 
 
 @app.get("/api/logs")
@@ -239,6 +245,7 @@ async def approve(vid: int):
         raise HTTPException(400, "Video kann in diesem Zustand nicht freigegeben werden")
     db.add_log("system", "info", f"Video #{vid} freigegeben", vid)
     v = _set_status(vid, "approved", error=None)
+    emit_event("video.approved", {"id": vid, "title": v.get("title") or v["topic"]})
     registry.get("publisher").kick()
     return v
 
@@ -331,6 +338,90 @@ async def video_thumb(vid: int):
     if not v or not v["thumb_path"] or not Path(v["thumb_path"]).exists():
         raise HTTPException(404)
     return FileResponse(v["thumb_path"], media_type="image/jpeg")
+
+
+# ---------------- automations ----------------
+
+def _with_meta(a: dict, request: Request | None = None) -> dict:
+    a = dict(a)
+    a["webhook_path"] = f"/hooks/{a['webhook_token']}"
+    a["running"] = a["id"] in auto.engine.active
+    return a
+
+
+@app.get("/api/automations")
+async def automations_list():
+    return [_with_meta(a) for a in auto.list_automations()]
+
+
+@app.get("/api/automations/runs")
+async def automation_runs_all(limit: int = 30):
+    names = {a["id"]: a["name"] for a in auto.list_automations()}
+    runs = auto.list_runs(None, limit)
+    for r in runs:
+        r["automation_name"] = names.get(r["automation_id"], "")
+    return runs
+
+
+@app.post("/api/automations")
+async def automations_create(payload: dict = Body(...)):
+    try:
+        return _with_meta(auto.create(payload))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/automations/{aid}")
+async def automations_update(aid: int, payload: dict = Body(...)):
+    if not auto.get_automation(aid):
+        raise HTTPException(404, "Automatisierung nicht gefunden")
+    try:
+        return _with_meta(auto.update(aid, payload))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/automations/{aid}/toggle")
+async def automations_toggle(aid: int, enabled: bool = Body(..., embed=True)):
+    if not auto.get_automation(aid):
+        raise HTTPException(404, "Automatisierung nicht gefunden")
+    return _with_meta(auto.set_enabled(aid, enabled))
+
+
+@app.delete("/api/automations/{aid}")
+async def automations_delete(aid: int):
+    auto.delete(aid)
+    return {"ok": True}
+
+
+@app.post("/api/automations/{aid}/run")
+async def automations_run(aid: int, payload: dict = Body(default={})):
+    a = auto.get_automation(aid)
+    if not a:
+        raise HTTPException(404, "Automatisierung nicht gefunden")
+    run_id = auto.engine.launch(a, {"type": "manual", "data": payload or {}})
+    return {"ok": True, "run_id": run_id}
+
+
+@app.get("/api/automations/{aid}/runs")
+async def automations_runs(aid: int, limit: int = 30):
+    return auto.list_runs(aid, limit)
+
+
+@app.api_route("/hooks/{token}", methods=["GET", "POST"])
+async def webhook(token: str, request: Request):
+    a = auto.by_token(token)
+    if not a or not a["enabled"] or a["trigger"].get("type") != "webhook":
+        raise HTTPException(404, "Unbekannter Webhook")
+    data: dict = dict(request.query_params)
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            data.update(body if isinstance(body, dict) else {"body": body})
+        except Exception:  # noqa: BLE001
+            data["body"] = (await request.body()).decode(errors="replace")[:5000]
+    run_id = auto.engine.launch(a, {"type": "webhook", "data": data})
+    return {"ok": True, "run_id": run_id}
 
 
 # ---------------- settings ----------------

@@ -8,37 +8,34 @@ Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im 
 
 ## Das Dashboard
 
-Links in der Seitenleiste findest du alle Bereiche:
+Startseite ist die **Fabrik**: eine isometrische Live-Ansicht im Stil eines Aufbauspiels. Acht Abteilungen
+liegen an einer Hauptstraße, dazu kommt das Automations-Werk. Die Agenten arbeiten an ihren Stationen und
+tragen jedes Video als Kiste zur nächsten Abteilung. Freigegebene Videos starten über den Uplink im Versand.
 
-- **Übersicht**: Kennzahlen, Produktion der letzten 14 Tage, Pipeline, Status der Agenten, die nächsten Termine, zuletzt produzierte Videos und die Plattformen.
-- **Bunker**: die Live-Ansicht der Basis (siehe unten).
-- **Videos** und **Ideen**: prüfen, freigeben, bearbeiten, eigene Themen hinzufügen.
-- **Automatisierung**: Autopilot, Zeitplan (Videos pro Tag, Uhrzeiten, Wochentage, Zeitzone), Freigabe-Modus, Ideenvorrat, Trend-Scout-Intervall, Videolänge, Upload-Weg pro Plattform und jeden Agenten einzeln an oder aus. Jede Änderung wird sofort gespeichert.
-- **Protokoll** und **Einstellungen**: alle Agenten-Logs sowie API-Schlüssel und Zugangsdaten.
+- **Oben**: Zähler für Ideen, Produktion, Freigabe, Online und Automationen sowie der Countdown bis zum nächsten Video
+- **Links (Crew)**: alle Agenten und der Automator-Roboter; ein Klick zoomt auf die Figur
+- **Rechts**: Videos, die auf deine Freigabe warten (direkt freigeben), der Live-Feed und die letzten Automations-Läufe
+- **Unten**: Video produzieren, Ideen suchen, neue Automation anlegen, Zoom und Vollbild
+- Mausrad = zoomen, ziehen = verschieben, Doppelklick auf eine Abteilung zoomt hinein, Hell/Dunkel = Tag/Nacht
 
-Das Design folgt dem System: hell oder dunkel, umschaltbar unten in der Seitenleiste.
+Die **Seitenleiste** ist ausgeklappt und lässt sich mit dem Pfeil oben einklappen:
+Fabrik, Statistik · Faceless-Kanal (Videos, Ideen, Kanal-Steuerung) · Automatisierungen · Protokoll, Einstellungen.
 
-## Der Bunker (Live-Ansicht)
+## Automatisierungen (allgemein)
 
-Die Basis hat drei unterirdische Etagen, die ein Aufzug verbindet:
+Unabhängig vom Videokanal baust du eigene Abläufe nach dem Muster **Auslöser → Schritte**:
 
-| Etage | Abteilungen |
+| Auslöser | Schritte |
 |---|---|
-| −1 Kommando | Trend-Radar, Leitstand, Freigabe, Sendezentrale (Uplink an die Oberfläche) |
-| −2 Kreativ | Schreibstube, Tonstudio, Bildarchiv, Lounge |
-| −3 Technik | Schnittraum, Render-Farm, Serverraum, Energie |
+| Manuell, Zeitplan (Uhrzeiten + Wochentage), Intervall, Webhook (eigene URL), Ereignis aus der Fabrik (Video gestartet / wartet auf Freigabe / freigegeben / veröffentlicht / Fehler, neue Ideen) | HTTP-Anfrage, Claude fragen (optional mit Websuche), Discord, Slack, Telegram, Bedingung, Warten, Videoidee anlegen, Video produzieren, Agent starten, Autopilot schalten, Protokoll-Eintrag |
 
-Unter **Alle Ebenen** siehst du das Gebäude als gestapelten 3D-Schnitt. Ein Klick auf eine Etage zeigt
-ihren Grundriss von oben. Die Agenten arbeiten an ihrem Platz und tragen jedes Video als Kachel in die
-nächste Abteilung, wenn nötig mit dem Aufzug auf eine andere Etage. Freigegebene Videos fliegen durch
-den Uplink nach oben.
+Mit Variablen nutzt du Ergebnisse weiter, z. B. `{{trigger.data.title}}`, `{{steps.1.output}}`,
+`{{steps.1.output.status}}`, `{{date}}`, `{{time}}` oder `{{stats.published}}`. Vorlagen (Discord-Post bei neuem Video,
+KI-News am Morgen, Website-Monitor, Webhook → Idee, Fehler-Alarm, Wochenbericht) helfen beim Start. Jeder Lauf
+wird mit allen Schritt-Ergebnissen gespeichert. Webhooks erreichst du unter `/hooks/<token>` (GET oder POST mit JSON).
 
-- Mausrad = zoomen, ziehen = verschieben, Vollbild über das Symbol oben rechts
-- Klick auf einen Agenten: Status, Aufgabe, Pause/Ausführen
-- Klick auf eine Video-Kachel oder die orange blinkende Freigabe öffnet das Video
-
-**Demo ohne Server:** `python tools/build_demo.py demo.html` erzeugt eine eigenständige Seite, die die
-ganze Zentrale mit simulierten Agenten zeigt.
+**Demo ohne Server:** `python tools/build_demo.py demo.html` erzeugt eine eigenständige Seite mit simulierten
+Agenten und Automationen.
 
 ## Die Agentenstation
 

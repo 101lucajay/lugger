@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import db
-from ..events import bus
+from ..events import bus, emit_event
 from ..publishers import platforms as pf
 from .base import AgentError, VideoStageAgent
 
@@ -60,6 +60,11 @@ class Publisher(VideoStageAgent):
         self.log(f"Veröffentlicht auf {', '.join(targets)} 🎉")
         self.advance(video["id"], publish_results=results)
         bus.publish("notify", {"title": "Veröffentlicht", "message": script["title"], "video_id": video["id"]})
+        emit_event("video.published", {"id": video["id"], "title": script["title"], "description": script.get("description", ""),
+                                       "urls": {p: r.get("url", "") for p, r in results.items()},
+                                       "youtube_url": results.get("youtube", {}).get("url", ""),
+                                       "tiktok_url": results.get("tiktok", {}).get("url", ""),
+                                       "instagram_url": results.get("instagram", {}).get("url", "")})
 
     def _save(self, vid: int, results: dict) -> None:
         db.update_video(vid, publish_results=results)

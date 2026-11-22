@@ -11,7 +11,7 @@ import traceback
 from typing import Any
 
 from .. import db
-from ..events import bus
+from ..events import bus, emit_event
 
 
 class AgentError(Exception):
@@ -105,6 +105,7 @@ class Agent:
         if isinstance(item, dict) and "id" in item and "topic" in item:
             db.update_video(item["id"], status="failed", error=f"[{self.name}] {exc}")
             bus.publish("video", db.get_video(item["id"]))
+            emit_event("video.failed", {"id": item["id"], "topic": item["topic"], "agent": self.name, "error": str(exc)})
 
     def start(self) -> None:
         saved = db.get_setting_raw(f"agent_enabled_{self.key}")

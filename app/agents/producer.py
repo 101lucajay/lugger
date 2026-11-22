@@ -5,7 +5,7 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 from .. import config, db
-from ..events import bus
+from ..events import bus, emit_event
 from .base import Agent, AgentError
 
 
@@ -74,7 +74,9 @@ def start_production(idea_id: int | None = None, topic: str | None = None) -> in
             text += f" — {idea['angle']}"
         vid = db.create_video(text, idea["id"])
         bus.publish("ideas", {})
-    bus.publish("video", db.get_video(vid))
+    video = db.get_video(vid)
+    bus.publish("video", video)
+    emit_event("video.created", {"id": vid, "topic": video["topic"]})
     return vid
 
 
