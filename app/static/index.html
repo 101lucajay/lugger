@@ -50,6 +50,9 @@
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11L12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
   <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
 </svg>
 
@@ -57,20 +60,37 @@
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark"><svg class="i"><use href="#i-factory"/></svg></div>
-      <div class="brand-text"><div class="brand-name">Lugger</div><div class="brand-sub">Agenten-Fabrik</div></div>
+      <div class="brand-text"><div class="brand-name">Lugger</div><div class="brand-sub">Agentenbasis</div></div>
       <button class="icon-btn collapse-btn" id="collapseBtn" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen"><svg class="i"><use href="#i-chevl"/></svg></button>
     </div>
-    <button class="nav active" data-page="fabrik" title="Fabrik"><svg class="i"><use href="#i-factory"/></svg><span>Fabrik</span><span class="count blue" id="liveCount" hidden></span></button>
-    <button class="nav" data-page="stats" title="Statistik"><svg class="i"><use href="#i-chart"/></svg><span>Statistik</span></button>
-    <div class="nav-label"><span>Faceless-Kanal</span></div>
-    <button class="nav" data-page="videos" title="Videos"><svg class="i"><use href="#i-video"/></svg><span>Videos</span><span class="count" id="badgeApproval" hidden>0</span></button>
-    <button class="nav" data-page="ideas" title="Ideen"><svg class="i"><use href="#i-bulb"/></svg><span>Ideen</span></button>
-    <button class="nav" data-page="channel" title="Kanal-Steuerung"><svg class="i"><use href="#i-clock"/></svg><span>Kanal-Steuerung</span></button>
-    <div class="nav-label"><span>Automatisierung</span></div>
-    <button class="nav" data-page="automations" title="Automatisierungen"><svg class="i"><use href="#i-bolt"/></svg><span>Automatisierungen</span><span class="count blue" id="autoCount" hidden></span></button>
-    <div class="nav-label"><span>System</span></div>
-    <button class="nav" data-page="log" title="Protokoll"><svg class="i"><use href="#i-list"/></svg><span>Protokoll</span></button>
-    <button class="nav" data-page="config" title="Einstellungen"><svg class="i"><use href="#i-sliders"/></svg><span>Einstellungen</span></button>
+    <button class="nav active" data-page="home" title="Agentenbasis"><svg class="i"><use href="#i-home"/></svg><span>Agentenbasis</span><span class="count blue" id="liveCount" hidden></span></button>
+
+    <div class="nav-group" data-group="auto">
+      <button class="nav-head" data-toggle="auto"><span>Automatisierungen</span><svg class="i chev"><use href="#i-chevd"/></svg></button>
+      <div class="nav-sub">
+        <button class="nav" data-page="automations" title="Automatisierungen"><svg class="i"><use href="#i-bolt"/></svg><span>Übersicht</span><span class="count blue" id="autoCount" hidden></span></button>
+        <button class="nav" data-page="runs" title="Verlauf"><svg class="i"><use href="#i-history"/></svg><span>Verlauf</span></button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-group="channel">
+      <button class="nav-head" data-toggle="channel"><span>Faceless-Kanal</span><svg class="i chev"><use href="#i-chevd"/></svg></button>
+      <div class="nav-sub">
+        <button class="nav" data-page="videos" title="Videos"><svg class="i"><use href="#i-video"/></svg><span>Videos</span><span class="count" id="badgeApproval" hidden>0</span></button>
+        <button class="nav" data-page="ideas" title="Ideen"><svg class="i"><use href="#i-bulb"/></svg><span>Ideen</span></button>
+        <button class="nav" data-page="channel" title="Zeitplan & Freigabe"><svg class="i"><use href="#i-clock"/></svg><span>Zeitplan &amp; Freigabe</span></button>
+        <button class="nav" data-page="stats" title="Statistik"><svg class="i"><use href="#i-chart"/></svg><span>Statistik</span></button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-group="admin">
+      <button class="nav-head" data-toggle="admin"><span>Admin-Center</span><svg class="i chev"><use href="#i-chevd"/></svg></button>
+      <div class="nav-sub">
+        <button class="nav" data-page="admin" title="Agenten verwalten"><svg class="i"><use href="#i-shield"/></svg><span>Agenten</span><span class="count red" id="errCount" hidden></span></button>
+        <button class="nav" data-page="log" title="Protokoll"><svg class="i"><use href="#i-list"/></svg><span>Protokoll</span></button>
+        <button class="nav" data-page="config" title="Einstellungen"><svg class="i"><use href="#i-sliders"/></svg><span>Einstellungen</span></button>
+      </div>
+    </div>
     <div class="side-foot">
       <div class="pilot-card">
         <div class="pilot-row"><span>Autopilot</span><label class="switch"><input type="checkbox" id="autopilot" aria-label="Autopilot"><span></span></label></div>
@@ -86,7 +106,7 @@
   <div class="main">
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menü"><svg class="i"><use href="#i-menu"/></svg></button>
-      <div class="tb-title"><h1 id="pageTitle">Fabrik</h1><div class="sub" id="pageSub"></div></div>
+      <div class="tb-title"><h1 id="pageTitle">Agentenbasis</h1><div class="sub" id="pageSub"></div></div>
       <div class="top-actions">
         <span class="live" id="live"><i></i><span>Offline</span></span>
         <button class="btn primary" id="produceNow"><svg class="i"><use href="#i-play"/></svg>Video produzieren</button>
@@ -94,23 +114,28 @@
     </header>
 
     <div class="content" id="content">
-      <!-- ===== Fabrik ===== -->
-      <section class="page full" data-view="fabrik">
-        <div class="fabrik" id="fabrik">
-          <div class="hud hud-top glass" id="hudTop"></div>
-          <div class="hud hud-left glass" id="hudCrew"></div>
-          <div class="hud hud-right" id="hudRight"></div>
-          <div class="hud hud-dock glass" id="hudDock">
-            <button class="dock-btn primary" data-dock="produce"><svg class="i"><use href="#i-play"/></svg><span>Video</span></button>
-            <button class="dock-btn" data-dock="scout"><svg class="i"><use href="#i-bulb"/></svg><span>Ideen</span></button>
-            <button class="dock-btn" data-dock="automation"><svg class="i"><use href="#i-bolt"/></svg><span>Automation</span></button>
-            <span class="dock-sep"></span>
-            <button class="dock-btn icon" data-dock="out" title="Verkleinern"><svg class="i"><use href="#i-zout"/></svg></button>
-            <button class="dock-btn icon" data-dock="in" title="Vergrößern"><svg class="i"><use href="#i-zin"/></svg></button>
-            <button class="dock-btn icon" data-dock="fit" title="Ganze Fabrik"><svg class="i"><use href="#i-fit"/></svg></button>
-            <button class="dock-btn icon" data-dock="full" title="Vollbild"><svg class="i"><use href="#i-expand"/></svg></button>
+      <!-- ===== Agentenbasis (Dashboard) ===== -->
+      <section class="page wide" data-view="home">
+        <div class="hero">
+          <div><h2 id="hGreeting">Hallo</h2><p id="hSummary">Lade Status …</p></div>
+          <div class="row">
+            <button class="btn" data-home="scout"><svg class="i"><use href="#i-bulb"/></svg>Ideen suchen</button>
+            <button class="btn" data-home="automation"><svg class="i"><use href="#i-bolt"/></svg>Neue Automatisierung</button>
           </div>
-          <div class="hud hud-agent glass" id="hudAgent" hidden></div>
+        </div>
+        <div class="kpi-strip" id="hKpis"></div>
+        <div class="home-grid">
+          <div class="card base-card">
+            <div class="card-h"><h2>Agentenbasis · live</h2>
+              <div class="legend"><span><i style="background:#0a84ff"></i>In Arbeit</span><span><i style="background:#ff9500"></i>Wartet auf dich</span><span><i style="background:#34c759"></i>Online</span><span><i style="background:#ff3b30"></i>Fehler</span></div></div>
+            <div class="base-wrap" id="base"></div>
+            <div class="crew-strip" id="crewStrip"></div>
+          </div>
+          <div class="home-side">
+            <div class="card"><div class="card-h"><h2>Wartet auf dich</h2><span class="meta" id="hApproveN"></span></div><div id="hApprove"></div></div>
+            <div class="card"><div class="card-h"><h2>Automatisierungen</h2><button class="btn plain small" data-goto="automations">Alle</button></div><div id="hAutos"></div></div>
+            <div class="card"><div class="card-h"><h2>Live</h2><span class="live on"><i></i></span></div><div class="feed" id="hFeed"></div></div>
+          </div>
         </div>
       </section>
 
@@ -138,7 +163,7 @@
         </div>
         <div class="grid g-3">
           <div class="card span-2">
-            <div class="card-h"><h2>Agenten</h2><button class="btn plain small" data-goto="fabrik">In der Fabrik ansehen</button></div>
+            <div class="card-h"><h2>Agenten</h2><button class="btn plain small" data-goto="admin">Verwalten</button></div>
             <div class="list" id="agentList"></div>
           </div>
           <div class="card">
@@ -192,6 +217,16 @@
         <div id="autoView"></div>
       </section>
 
+      <!-- ===== Automations-Verlauf ===== -->
+      <section class="page" data-view="runs" hidden>
+        <div id="runsView"></div>
+      </section>
+
+      <!-- ===== Admin-Center: Agenten ===== -->
+      <section class="page" data-view="admin" hidden>
+        <div id="adminView"></div>
+      </section>
+
       <!-- ===== Protokoll ===== -->
       <section class="page" data-view="log" hidden>
         <div class="toolbar"><select class="select" id="logFilter" style="width:220px"><option value="">Alle Bereiche</option></select></div>
@@ -208,9 +243,10 @@
 
 <dialog class="modal" id="videoModal"><div class="modal-body" id="videoModalBody"></div></dialog>
 <dialog class="modal editor" id="autoEditor"><div id="autoEditorBody"></div></dialog>
+<dialog class="modal agentdlg" id="agentDialog"><div id="agentDialogBody"></div></dialog>
 <dialog class="modal runs" id="runDialog"><div id="runDialogBody"></div></dialog>
 <div class="toasts" id="toasts"></div>
-<script src="/static/factory.js"></script>
+<script src="/static/base.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

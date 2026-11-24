@@ -132,3 +132,30 @@ def schedule_days() -> set[int]:
         except ValueError:
             continue
     return days
+
+
+def agent_cfg(key: str) -> dict:
+    """Admin-Center overrides for one agent: display_name, model, instructions."""
+    try:
+        data = json.loads(db.get_setting_raw("agent_cfg") or "{}")
+    except ValueError:
+        data = {}
+    return data.get(key, {})
+
+
+def set_agent_cfg(key: str, values: dict) -> dict:
+    try:
+        data = json.loads(db.get_setting_raw("agent_cfg") or "{}")
+    except ValueError:
+        data = {}
+    cur = data.get(key, {})
+    for k in ("display_name", "model", "instructions"):
+        if k in values:
+            v = str(values[k] or "").strip()
+            if v:
+                cur[k] = v[:4000]
+            else:
+                cur.pop(k, None)
+    data[key] = cur
+    db.set_setting_raw("agent_cfg", json.dumps(data, ensure_ascii=False))
+    return cur

@@ -8,18 +8,25 @@ Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im 
 
 ## Das Dashboard
 
-Startseite ist die **Fabrik**: eine isometrische Live-Ansicht im Stil eines Aufbauspiels. Acht Abteilungen
-liegen an einer Hauptstraße, dazu kommt das Automations-Werk. Die Agenten arbeiten an ihren Stationen und
-tragen jedes Video als Kiste zur nächsten Abteilung. Freigegebene Videos starten über den Uplink im Versand.
+Die Startseite ist die **Agentenbasis**: ein fester Grundriss von oben, der immer vollständig sichtbar ist. Er lässt sich
+nicht verschieben, drehen oder zoomen. Die acht Abteilungen sind nach dem Ablauf nummeriert (1 Trend-Radar →
+8 Versand), rechts liegt das Automations-Werk. Die Agenten arbeiten an ihren Plätzen und tragen jedes Video als
+Kachel durch den Hauptgang zur nächsten Abteilung. Rund um den Grundriss zeigt das Dashboard Kennzahlen, die Crew,
+offene Freigaben, die letzten Automations-Läufe und einen Live-Feed. Ein Klick auf einen Agenten öffnet seine Details.
 
-- **Oben**: Zähler für Ideen, Produktion, Freigabe, Online und Automationen sowie der Countdown bis zum nächsten Video
-- **Links (Crew)**: alle Agenten und der Automator-Roboter; ein Klick zoomt auf die Figur
-- **Rechts**: Videos, die auf deine Freigabe warten (direkt freigeben), der Live-Feed und die letzten Automations-Läufe
-- **Unten**: Video produzieren, Ideen suchen, neue Automation anlegen, Zoom und Vollbild
-- Mausrad = zoomen, ziehen = verschieben, Doppelklick auf eine Abteilung zoomt hinein, Hell/Dunkel = Tag/Nacht
+Die **Seitenleiste** ist ausgeklappt (einklappbar) und in Untermenüs gegliedert:
 
-Die **Seitenleiste** ist ausgeklappt und lässt sich mit dem Pfeil oben einklappen:
-Fabrik, Statistik · Faceless-Kanal (Videos, Ideen, Kanal-Steuerung) · Automatisierungen · Protokoll, Einstellungen.
+- **Agentenbasis** (Start)
+- **Automatisierungen**: Übersicht, Verlauf
+- **Faceless-Kanal**: Videos, Ideen, Zeitplan & Freigabe, Statistik
+- **Admin-Center**: Agenten, Protokoll, Einstellungen
+
+## Admin-Center
+
+Unter **Admin-Center → Agenten** verwaltest du jeden Agenten: aktiv/pausiert, sofort ausführen, neu starten,
+Kennzahlen (erledigt, Fehler, Ø Dauer, letzte Aktivität) und die letzten Protokollzeilen. Für Trend-Scout und
+Skript-Autor kannst du ein eigenes KI-Modell und zusätzliche Anweisungen festlegen (z. B. „Immer mit einer
+überraschenden Zahl beginnen“). Außerdem: alle Agenten pausieren/starten und fehlgeschlagene Videos neu starten.
 
 ## Automatisierungen (allgemein)
 

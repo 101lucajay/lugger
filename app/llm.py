@@ -23,10 +23,10 @@ def _client() -> anthropic.AsyncAnthropic:
 
 async def json_call(system: str, prompt: str, schema: dict[str, Any], *,
                     web_search: bool = False, effort: str = "medium",
-                    max_uses: int = 6) -> dict[str, Any]:
+                    max_uses: int = 6, model: str | None = None) -> dict[str, Any]:
     """Ask Claude and get back a dict that matches `schema`."""
     client = _client()
-    model = config.get("llm_model")
+    model = model or config.get("llm_model")
     tools = []
     if web_search and config.get("llm_web_search"):
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": max_uses,

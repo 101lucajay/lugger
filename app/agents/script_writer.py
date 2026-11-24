@@ -100,8 +100,11 @@ Außerdem:
 - description: 2–3 Sätze Beschreibung für die Plattformen
 - hashtags: 5–8 relevante Hashtags (mit #)
 - sources: verwendete Quellen-URLs"""
+            cfg = config.agent_cfg(self.key)
+            if cfg.get("instructions"):
+                system += "\n\nZusätzliche Vorgaben des Betreibers:\n" + cfg["instructions"]
             self.report("Claude schreibt das Skript…", 35)
-            script = await llm.json_call(system, prompt, SCRIPT_SCHEMA, web_search=True, effort="medium")
+            script = await llm.json_call(system, prompt, SCRIPT_SCHEMA, web_search=True, effort="medium", model=cfg.get("model"))
 
         if not script.get("segments"):
             raise ValueError("Skript enthält keine Segmente")

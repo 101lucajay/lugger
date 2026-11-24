@@ -142,7 +142,10 @@ und schlage 8 Ideen für 45–60-sekündige Informationsvideos vor. Mische tages
 - score: 1–10, wie hoch das virale Potenzial ist
 - sources: 1–3 URLs mit belastbaren Quellen
 Keine Clickbait-Falschaussagen, keine Finanz- oder Gesundheitsversprechen."""
-        result = await llm.json_call(system, prompt, IDEAS_SCHEMA, web_search=True, effort="medium")
+        cfg = config.agent_cfg(self.key)
+        if cfg.get("instructions"):
+            system += "\n\nZusätzliche Vorgaben des Betreibers:\n" + cfg["instructions"]
+        result = await llm.json_call(system, prompt, IDEAS_SCHEMA, web_search=True, effort="medium", model=cfg.get("model"))
         ideas = result.get("ideas", [])
         self.report(f"{len(ideas)} Ideen erhalten – speichere…", 90)
         known_lower = {t.lower() for t in known}

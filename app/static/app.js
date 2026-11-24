@@ -3,7 +3,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ic = (id, cls = "i") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
-const agentIcon = (key) => `<svg class="i" viewBox="0 0 24 24"><path d="${Factory.ICONS[key] || ""}"/></svg>`;
+const agentIcon = (key) => `<svg class="i" viewBox="0 0 24 24"><path d="${Base.ICONS[key] || ""}"/></svg>`;
 
 const STATUS = {
   queued: ["Warteschlange", "blue"], scripting: ["Skript", "blue"], scripted: ["Skript fertig", "blue"],
@@ -19,13 +19,14 @@ const AGENT_STATUS = { working: "Arbeitet", idle: "Bereit", paused: "Pausiert", 
 const PLATFORMS = [["youtube", "YouTube Shorts", "#ff3b30"], ["tiktok", "TikTok", "#25c2d6"], ["instagram", "Instagram Reels", "#e1306c"]];
 const MODE_LABEL = { off: "Aus", direct: "Offizielle API", uploadpost: "upload-post.com" };
 const PAGES = {
-  fabrik: ["Fabrik", "Live – deine Agenten bei der Arbeit"], stats: ["Statistik", ""], videos: ["Videos", "Prüfen, freigeben, verwalten"],
+  home: ["Agentenbasis", "Live – deine Agenten bei der Arbeit"], stats: ["Statistik", ""], runs: ["Automatisierungen · Verlauf", "Alle Läufe mit Ergebnissen"],
+  admin: ["Admin-Center · Agenten", "Agenten verwalten, konfigurieren und überwachen"], videos: ["Videos", "Prüfen, freigeben, verwalten"],
   ideas: ["Ideen", "Themen für kommende Videos"], channel: ["Kanal-Steuerung", "Zeitplan, Freigabe & Agenten des Faceless-Kanals"],
   automations: ["Automatisierungen", "Eigene Abläufe: Auslöser → Schritte"],
   log: ["Protokoll", "Alles, was die Agenten tun"], config: ["Einstellungen", "Konten, Stimme, Material & Zugänge"],
 };
 
-const state = { agents: {}, videos: new Map(), ideas: [], stats: {}, s: null, settings: null, page: "fabrik", videoFilter: "", logFilter: "",
+const state = { agents: {}, videos: new Map(), ideas: [], stats: {}, s: null, settings: null, page: "home", videoFilter: "", logFilter: "",
   autos: new Map(), runs: [], feed: [], selAgent: null };
 
 // ---------------- api / toast / theme ----------------
@@ -68,14 +69,19 @@ const chip = (st) => { const [l, c] = STATUS[st] || [st, ""]; return `<span clas
 
 // ---------------- navigation ----------------
 function go(page) {
-  if (!PAGES[page]) page = "fabrik";
+  if (!PAGES[page]) page = "home";
   state.page = page;
   $$(".nav").forEach((n) => n.classList.toggle("active", n.dataset.page === page));
   $$("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== page));
   $("#pageTitle").textContent = PAGES[page][0];
   $("#pageSub").textContent = page === "stats" ? (state.s?.niche || "") : PAGES[page][1];
   $("#sidebar").classList.remove("open");
-  page === "fabrik" ? Factory.start() : Factory.stop();
+  page === "home" ? Base.start() : Base.stop();
+  if (page === "home") renderHome();
+  if (page === "admin") loadAdmin();
+  if (page === "runs") renderRuns();
+  const parent = $(`.nav[data-page="${page}"]`)?.closest(".nav-group");
+  if (parent) parent.classList.remove("closed");
   if (page === "stats") renderOverview();
   if (page === "automations") renderAutomations();
   if (page === "ideas") loadIdeas();
@@ -98,9 +104,11 @@ function applyState(s) {
   $("#pilotSub").textContent = s.autopilot ? (s.next_slot ? `Nächstes Video ${fmtSlot(s.next_slot)}` : "Kein Termin geplant") : "Aus · nur manuelle Produktion";
   $("#logout").hidden = !s.auth;
   const b = $("#badgeApproval"); b.hidden = !s.stats.awaiting_approval; b.textContent = s.stats.awaiting_approval;
+  const errN = s.agents.filter((a) => a.status === "error").length, ec = $("#errCount"); ec.hidden = !errN; ec.textContent = errN;
+  const runN = s.automations?.running?.length || 0, ac = $("#autoCount"); ac.hidden = !runN; ac.textContent = runN;
   if (state.page === "stats") $("#pageSub").textContent = s.niche;
   renderOverview();
-  renderHud();
+  renderHome();
   if (state.page === "channel" && !document.activeElement?.closest("#automationView")) renderAutomation();
 }
 let stateTimer;
@@ -116,7 +124,8 @@ async function agentAction(key, action) {
   state.agents[a.key] = a;
   renderOverview();
   if (state.page === "channel") renderAutomation();
-  renderHud();
+  if (state.page === "admin") loadAdmin();
+  renderHome();
   if (action === "run") toast(a.name, "Auftrag erteilt");
 }
 
@@ -188,7 +197,7 @@ function renderFunnel(vids) {
 function renderAgentList() {
   const list = Object.values(state.agents);
   $("#agentList").innerHTML = list.map((a) => {
-    const col = Factory.AGENT_COLOR[a.key];
+    const col = Base.AGENT_COLOR[a.key];
     return `<div class="li"><div class="li-ico" style="background:${col}1f;color:${col}">${agentIcon(a.key)}</div>
       <div style="min-width:0"><div class="li-t">${esc(a.name)}</div><div class="li-s">${esc(a.status === "working" || a.status === "error" || a.status === "waiting" ? a.task : a.role)}</div>
       ${a.status === "working" && a.progress != null ? `<div class="bar" style="margin-top:6px;max-width:320px"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</div>
@@ -264,8 +273,8 @@ function upsertVideo(v) {
   if (!v) return;
   const prev = state.videos.get(v.id);
   state.videos.set(v.id, v);
-  Factory.video(v, prev);
-  renderVideos(); if (state.page === "stats") renderOverview(); renderHud();
+  Base.video(v, prev);
+  renderVideos(); if (state.page === "stats") renderOverview(); renderHome();
   const m = $("#videoModal");
   if (m.open && +m.dataset.vid === v.id && !m.dataset.editing && prev?.status !== v.status) openVideo(v.id, true);
 }
@@ -406,7 +415,7 @@ async function renderAutomation() {
 
     <div><div class="group-title">${ic("i-layers")}Agenten</div><div class="group">
       ${Object.values(state.agents).map((a) => {
-        const col = Factory.AGENT_COLOR[a.key];
+        const col = Base.AGENT_COLOR[a.key];
         return `<div class="set"><div class="li-ico" style="background:${col}1f;color:${col}">${agentIcon(a.key)}</div>
           <div class="set-l"><div class="set-t">${esc(a.name)}</div><div class="set-s"><span class="dot ${a.status}" style="width:7px;height:7px"></span> ${AGENT_STATUS[a.status] || a.status} · ${esc(a.role)}</div></div>
           <div class="set-c">${a.manual ? `<button type="button" class="btn small" data-run="${a.key}">Ausführen</button>` : ""}<label class="switch"><input type="checkbox" data-agent-sw="${a.key}" ${a.enabled ? "checked" : ""} aria-label="${esc(a.name)} aktiv"><span></span></label></div></div>`;
@@ -524,20 +533,16 @@ async function loadLogs() {
 }
 $("#logFilter").addEventListener("change", (e) => { state.logFilter = e.target.value; loadLogs(); });
 
-// ---------------- factory ----------------
-Factory.init($("#fabrik"), {
+// ---------------- agent base (home) ----------------
+Base.init($("#base"), {
   getAgents: () => state.agents,
   getStats: () => state.stats,
   getAutomation: () => ({ active: [...state.autos.values()].filter((a) => a.running).map((a) => ({ name: a.name })),
     recent: state.runs.filter((r) => r.status !== "running").slice(0, 5).map((r) => ({ name: r.automation_name, status: r.status })),
     enabled: [...state.autos.values()].filter((a) => a.enabled).length }),
-  getInsets: () => {
-    const w = $("#fabrik").clientWidth;
-    return { left: w > 900 ? 215 : 8, right: w > 1100 ? 235 : 8, top: 70, bottom: 70 };
-  },
   openVideo: (id) => openVideo(id),
-  onSelect: (key, srv, clicked) => { if (clicked || key !== state.selAgent) { state.selAgent = key; renderAgentCard(); } },
-  onZone: (z) => { if (z === "auto") go("automations"); },
+  onAgent: (key) => openAgentDialog(key),
+  onAutomations: () => go("automations"),
 });
 
 // ---------------- live connection ----------------
@@ -551,16 +556,16 @@ function connect() {
       state.agents[data.key] = data;
       if (state.page === "stats") renderAgentList();
     } else if (type === "log") { if (data.ts) { appendLog(data); pushFeed(data); } }
-    else if (type === "automation") { state.autos.set(data.id, data); if (state.page === "automations") renderAutomations(); }
+    else if (type === "automation") { state.autos.set(data.id, data); if (state.page === "automations") renderAutomations(); renderHome(); }
     else if (type === "automation_deleted") { state.autos.delete(data.id); if (state.page === "automations") renderAutomations(); }
     else if (type === "automation_run") onRun(data);
     else if (type === "video") { upsertVideo(data); refreshState(); }
-    else if (type === "video_deleted") { state.videos.delete(data.id); Factory.deleted(data.id); renderVideos(); refreshState(); }
+    else if (type === "video_deleted") { state.videos.delete(data.id); Base.deleted(data.id); renderVideos(); refreshState(); }
     else if (type === "ideas") { refreshState(); if (state.page === "ideas") loadIdeas(); }
     else if (type === "notify") toast(data.title, data.message);
   };
 }
-setInterval(() => { if (state.page === "stats") renderAgentList(); if (state.page === "fabrik") renderHud(); }, 1000);
+setInterval(() => { if (state.page === "stats") renderAgentList(); if (state.page === "home") renderHome(); }, 1000);
 
 (async function init() {
   const [s, vids, settings, autos, runs, logs] = await Promise.all([api("/api/state"), api("/api/videos"), api("/api/settings"),
@@ -570,10 +575,10 @@ setInterval(() => { if (state.page === "stats") renderAgentList(); if (state.pag
   state.runs = runs;
   state.feed = logs.slice(-10).reverse();
   vids.forEach((v) => state.videos.set(v.id, v));
-  Factory.loadVideos(vids);
+  Base.loadVideos(vids);
   applyState(s);
   renderVideos();
-  go(location.hash.slice(1) || "fabrik");
+  go(location.hash.slice(1) || "home");
   connect();
 })();
 
@@ -588,133 +593,213 @@ $("#collapseBtn").addEventListener("click", () => {
 });
 
 // ======================================================================
-// Fabrik HUD
+// Sidebar groups (all open by default, remembered)
 // ======================================================================
-const ago = (ts) => { const s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} T`; };
+(function () {
+  let closed = [];
+  try { closed = JSON.parse(localStorage.getItem("lugger.navClosed") || "[]"); } catch (e) { /* optional */ }
+  $$(".nav-group").forEach((g) => { if (closed.includes(g.dataset.group)) g.classList.add("closed"); });
+  $$(".nav-head").forEach((h) => h.addEventListener("click", () => {
+    const g = h.closest(".nav-group"); g.classList.toggle("closed");
+    try { localStorage.setItem("lugger.navClosed", JSON.stringify($$(".nav-group.closed").map((x) => x.dataset.group))); } catch (e) { /* optional */ }
+  }));
+})();
+
+// ======================================================================
+// Home: Agentenbasis dashboard
+// ======================================================================
+const ago = (ts) => { const s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} T`; };
 function countdown(iso) {
   if (!iso) return "–";
   const s = Math.max(0, Math.round((new Date(iso) - Date.now()) / 1000));
   if (s >= 3600) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
-function pushFeed(l) { state.feed.unshift(l); state.feed = state.feed.slice(0, 10); if (state.page === "fabrik") renderFeed(); }
-function res(icon, col, value, label, click) {
-  return `<button class="res ${click ? "click" : ""}" ${click ? `data-res="${click}"` : "tabindex=-1"}><span class="res-ico" style="background:${col}22;color:${col}">${ic(icon)}</span><span><b>${value}</b><small>${label}</small></span></button>`;
+const runColor = (s) => ({ running: "var(--accent)", success: "var(--green)", skipped: "var(--text-3)", error: "var(--red)" }[s] || "var(--text-3)");
+function pushFeed(l) { state.feed.unshift(l); state.feed = state.feed.slice(0, 12); if (state.page === "home") renderFeed(); }
+function kmini(icon, col, value, label, go2) { return `<button class="kmini" data-hgo="${go2}"><span class="si" style="background:${col}1f;color:${col}">${ic(icon)}</span><span style="min-width:0"><b>${value}</b><small>${label}</small></span></button>`; }
+function crewList() {
+  const autos = [...state.autos.values()], running = autos.find((a) => a.running);
+  return [...Object.values(state.agents), { key: "automator", name: "Automator", role: "Führt Automatisierungen aus", status: running ? "working" : "idle", task: running ? `Führt „${running.name}“ aus` : "Bereit", enabled: true }];
 }
-let lastHudSig = "";
-function renderHud() {
-  const s = state.s; if (!s) return;
+let homeSig = "";
+function renderHome() {
+  const s = state.s; if (!s || state.page !== "home") return;
   const st = s.stats, autos = [...state.autos.values()];
-  const running = autos.filter((a) => a.running).length;
-  $("#hudTop").innerHTML = [
-    res("i-bulb", "#5e5ce6", st.ideas, "Ideen", "ideas"),
-    res("i-factory", "#0a84ff", st.in_production, "In Produktion", "videos"),
-    res("i-check", "#ff9500", st.awaiting_approval, "Freigabe", st.awaiting_approval ? "approve" : "videos"),
-    res("i-send", "#30b45a", st.published, "Online", "stats"),
-    `<span class="res-sep"></span>`,
-    res("i-bolt", "#00a19a", `${autos.filter((a) => a.enabled).length}${running ? ` <span class="spin" style="width:10px;height:10px"></span>` : ""}`, "Automationen", "automations"),
-    res("i-clock", "#8e8e93", s.autopilot ? countdown(s.next_slot) : "Aus", s.autopilot ? "Nächstes Video" : "Autopilot", "channel"),
+  $("#hGreeting").textContent = greeting();
+  const working = Object.values(state.agents).filter((a) => a.status === "working").length;
+  const errors = Object.values(state.agents).filter((a) => a.status === "error").length;
+  const parts = [`${working} von ${Object.keys(state.agents).length} Agenten arbeiten`];
+  if (st.awaiting_approval) parts.push(`${st.awaiting_approval} ${st.awaiting_approval === 1 ? "Video wartet" : "Videos warten"} auf dich`);
+  if (errors) parts.push(`${errors} mit Fehler`);
+  parts.push(s.autopilot ? `nächstes Video in ${countdown(s.next_slot)}` : "Autopilot aus");
+  $("#hSummary").textContent = parts.join(" · ");
+  $("#hKpis").innerHTML = [
+    kmini("i-bulb", "#5e5ce6", st.ideas, "Ideen im Speicher", "ideas"),
+    kmini("i-factory", "#0a84ff", st.in_production, "In Produktion", "videos"),
+    kmini("i-check", "#ff9500", st.awaiting_approval, "Wartet auf Freigabe", "videos"),
+    kmini("i-send", "#30b45a", st.published, "Veröffentlicht", "stats"),
+    kmini("i-bolt", "#00a19a", `${autos.filter((a) => a.enabled).length}`, `Automationen aktiv${autos.some((a) => a.running) ? " · läuft" : ""}`, "automations"),
   ].join("");
-  const sig = JSON.stringify([Object.values(state.agents).map((a) => [a.status, a.task, Math.round(a.progress || 0)]), running, state.selAgent]);
-  if (sig !== lastHudSig) {
-    lastHudSig = sig;
-    const list = [...Object.values(state.agents), { key: "automator", name: "Automator", status: running ? "working" : "idle", task: running ? `Führt „${autos.find((a) => a.running)?.name}“ aus` : "Bereit für Automatisierungen", role: "Führt deine Automatisierungen aus" }];
-    $("#hudCrew").innerHTML = `<div class="hud-h"><span>Crew</span><span>${Object.values(state.agents).filter((a) => a.status === "working").length + (running ? 1 : 0)} aktiv</span></div>` + list.map((a) => {
-      const col = Factory.AGENT_COLOR[a.key];
-      return `<button class="crew ${state.selAgent === a.key ? "sel" : ""}" data-crew="${a.key}"><span class="crew-av" style="background:${col}22;color:${col}">${agentIcon(a.key)}<span class="st ${a.status}"></span></span>
-        <span style="min-width:0"><div class="crew-n">${esc(a.name)}</div><div class="crew-t">${esc(a.status === "idle" ? (a.key === "automator" ? a.task : "Bereit") : a.task || "")}</div>
-        ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</span></button>`;
-    }).join("");
-  }
-  renderRightHud();
-  if (state.selAgent) renderAgentCard();
-}
-let lastRightSig = "";
-function renderRightHud() {
+  const sig = JSON.stringify([crewList().map((a) => [a.name, a.status, a.task, Math.round(a.progress || 0)]),
+    [...state.videos.values()].filter((v) => v.status === "awaiting_approval").map((v) => v.id), state.runs.slice(0, 5).map((r) => [r.id, r.status])]);
+  if (sig === homeSig) return;
+  homeSig = sig;
+  $("#crewStrip").innerHTML = crewList().map((a) => {
+    const col = Base.AGENT_COLOR[a.key];
+    return `<button class="crew" data-crew="${a.key}"><span class="crew-av" style="background:${col}1f;color:${col}">${agentIcon(a.key)}<span class="st ${a.status}"></span></span>
+      <span style="min-width:0"><div class="crew-n">${esc(a.name)}</div><div class="crew-t">${esc(a.status === "idle" ? "Bereit" : a.task || "")}</div>
+      ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</span></button>`;
+  }).join("");
   const waiting = [...state.videos.values()].filter((v) => v.status === "awaiting_approval").sort((a, b) => a.id - b.id);
-  const sig = JSON.stringify([waiting.map((v) => v.id), state.runs.slice(0, 4).map((r) => [r.id, r.status]), [...state.autos.values()].length]);
-  if (sig === lastRightSig) return;
-  lastRightSig = sig;
-  const runs = state.runs.slice(0, 4);
-  $("#hudRight").innerHTML = `
-    <div class="glass hud-card"><div class="hud-h"><span>Wartet auf dich</span><span>${waiting.length}</span></div>
-      ${waiting.length ? waiting.slice(0, 3).map((v) => `<div class="appr"><div class="appr-th"></div><div style="min-width:0"><div class="appr-t">${esc(v.title || v.topic)}</div>
-        <div class="row"><button class="btn small ok" data-hq="approve" data-id="${v.id}">${ic("i-check")}Freigeben</button><button class="btn small" data-hq="open" data-id="${v.id}">Ansehen</button></div></div></div>`).join("")
-        : `<div class="crew-t" style="padding:2px 4px 6px">Keine offenen Freigaben.</div>`}
-    </div>
-    <div class="glass hud-card"><div class="hud-h"><span>Live</span><span class="live on"><i></i></span></div><div class="feed" id="hudFeed"></div></div>
-    <div class="glass hud-card"><div class="hud-h"><span>Automationen</span><button class="btn plain small" data-hq="autos" style="padding:0 2px">Alle</button></div>
-      ${runs.length ? runs.map((r) => `<div class="fe" data-run="${r.id}" style="cursor:pointer"><i style="background:${runColor(r.status)}"></i><span>${esc(r.automation_name || "")}</span><small>${r.status === "running" ? "läuft" : ago(r.started_at)}</small></div>`).join("")
-        : `<div class="crew-t" style="padding:2px 4px 6px">Noch keine Läufe. <a href="#automations">Automation erstellen</a></div>`}
-    </div>`;
+  $("#hApproveN").textContent = waiting.length || "";
+  $("#hApprove").innerHTML = waiting.length ? waiting.slice(0, 3).map((v) => `<div class="appr"><div class="appr-th"></div><div style="min-width:0"><div class="appr-t">${esc(v.title || v.topic)}</div>
+      <div class="row"><button class="btn small ok" data-hq="approve" data-id="${v.id}">${ic("i-check")}Freigeben</button><button class="btn small" data-hq="open" data-id="${v.id}">Ansehen</button></div></div></div>`).join("")
+    : `<div class="crew-t">Keine offenen Freigaben.</div>`;
+  const runs = state.runs.slice(0, 5);
+  $("#hAutos").innerHTML = runs.length ? `<div class="feed">${runs.map((r) => `<div class="fe" data-run="${r.id}" style="cursor:pointer"><i style="background:${runColor(r.status)}"></i><span>${esc(r.automation_name || "")}</span><small>${r.status === "running" ? "läuft" : ago(r.started_at)}</small></div>`).join("")}</div>`
+    : `<div class="crew-t">Noch keine Läufe.</div>`;
   renderFeed();
 }
 function renderFeed() {
-  const el = $("#hudFeed"); if (!el) return;
-  el.innerHTML = state.feed.slice(0, 7).map((l) => {
-    const col = Factory.AGENT_COLOR[l.agent] || (l.agent === "automations" ? "#00c7be" : "#8e8e93");
-    return `<div class="fe"><i style="background:${l.level === "error" ? "var(--red)" : col}"></i><span title="${esc(l.message)}">${esc(l.message)}</span><small>${new Date(l.ts * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</small></div>`;
-  }).join("");
+  const el = $("#hFeed"); if (!el) return;
+  el.innerHTML = state.feed.slice(0, 8).map((l) => {
+    const col = Base.AGENT_COLOR[l.agent] || (l.agent === "automations" ? "#00b3ab" : "#8e8e93");
+    const who = state.agents[l.agent]?.name || ({ automations: "Automatisierung", system: "System" }[l.agent] || l.agent);
+    return `<div class="fe"><i style="background:${l.level === "error" ? "var(--red)" : col}"></i><span title="${esc(who)}: ${esc(l.message)}">${esc(l.message)}</span><small>${new Date(l.ts * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</small></div>`;
+  }).join("") || '<div class="crew-t">Noch nichts passiert.</div>';
 }
-const runColor = (s) => ({ running: "var(--accent)", success: "var(--green)", skipped: "var(--text-3)", error: "var(--red)" }[s] || "var(--text-3)");
-function renderAgentCard() {
-  const el = $("#hudAgent");
-  const key = state.selAgent;
-  if (!key) { el.hidden = true; return; }
-  const running = [...state.autos.values()].find((a) => a.running);
-  const a = key === "automator" ? { key, name: "Automator", role: "Führt deine Automatisierungen aus", status: running ? "working" : "idle", task: running ? `Führt „${running.name}“ aus` : "Wartet auf den nächsten Auslöser", processed: state.runs.length, enabled: true } : state.agents[key];
-  if (!a) return;
-  const col = Factory.AGENT_COLOR[key];
-  const st = { working: ["Arbeitet", "blue"], idle: ["Bereit", "green"], paused: ["Pausiert", ""], error: ["Fehler", "red"], waiting: ["Wartet", "blue"] }[a.status] || [a.status, ""];
-  el.hidden = false;
-  el.innerHTML = `<div class="ha-h"><div class="ha-av" style="background:${col}">${agentIcon(key)}</div>
-    <div style="min-width:0;flex:1"><b>${esc(a.name)}</b><div class="crew-t">${esc(a.role)}</div></div><span class="chip ${st[1]}">${st[0]}</span>
-    <button class="icon-btn" data-ha="close" aria-label="Schließen">${ic("i-x")}</button></div>
-    <div style="font-size:13px">${esc(a.task || "–")}</div>
-    ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}
-    <div class="row">${key === "automator" ? `<button class="btn small" data-ha="autos">${ic("i-bolt")}Automatisierungen</button>` : `
-      <button class="btn small" data-ha="toggle">${ic(a.enabled ? "i-pause" : "i-play")}${a.enabled ? "Pausieren" : "Fortsetzen"}</button>
-      ${a.manual ? `<button class="btn small" data-ha="run">${ic("i-bolt")}Jetzt ausführen</button>` : ""}
-      ${a.video_id ? `<button class="btn small" data-ha="video">${ic("i-video")}Video #${a.video_id}</button>` : ""}`}
-      <span class="crew-t" style="margin-left:auto">${a.processed ?? 0} erledigt</span></div>`;
-}
-$("#hudAgent").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-ha]"); if (!b) return;
-  const key = state.selAgent, act = b.dataset.ha;
-  if (act === "close") { state.selAgent = null; Factory.deselect(); renderAgentCard(); lastHudSig = ""; renderHud(); }
-  else if (act === "toggle") agentAction(key, state.agents[key].enabled ? "pause" : "resume");
-  else if (act === "run") agentAction(key, "run");
-  else if (act === "video") openVideo(state.agents[key].video_id);
-  else if (act === "autos") go("automations");
-});
-$("#hudCrew").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-crew]"); if (!b) return;
-  state.selAgent = b.dataset.crew; Factory.select(b.dataset.crew); lastHudSig = ""; renderHud();
-});
-$("#hudTop").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-res]"); if (!b) return;
-  const t = b.dataset.res;
-  if (t === "approve") { const w = [...state.videos.values()].filter((v) => v.status === "awaiting_approval").sort((a, b2) => a.id - b2.id)[0]; if (w) openVideo(w.id); }
-  else go(t);
-});
-$("#hudRight").addEventListener("click", async (e) => {
+$("#hKpis").addEventListener("click", (e) => { const b = e.target.closest("[data-hgo]"); if (b) go(b.dataset.hgo); });
+$("#crewStrip").addEventListener("click", (e) => { const b = e.target.closest("[data-crew]"); if (b) openAgentDialog(b.dataset.crew); });
+$("[data-view=home]").addEventListener("click", async (e) => {
   const run = e.target.closest("[data-run]"); if (run) return openRun(+run.dataset.run);
+  const h = e.target.closest("[data-home]");
+  if (h) { if (h.dataset.home === "scout") agentAction("trend_scout", "run"); else openEditor(null); return; }
   const b = e.target.closest("[data-hq]"); if (!b) return;
-  if (b.dataset.hq === "approve") await videoAction(+b.dataset.id, "approve");
-  else if (b.dataset.hq === "open") openVideo(+b.dataset.id);
-  else if (b.dataset.hq === "autos") go("automations");
+  if (b.dataset.hq === "approve") await videoAction(+b.dataset.id, "approve"); else openVideo(+b.dataset.id);
 });
-$("#hudDock").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-dock]"); if (!b) return;
-  const d = b.dataset.dock;
-  if (d === "produce") $("#produceNow").click();
-  else if (d === "scout") agentAction("trend_scout", "run");
-  else if (d === "automation") openEditor(null);
-  else if (d === "in") Factory.zoom(1.3);
-  else if (d === "out") Factory.zoom(1 / 1.3);
-  else if (d === "fit") Factory.fit();
-  else if (d === "full") { try { document.fullscreenElement ? document.exitFullscreen() : $("#fabrik").requestFullscreen?.().catch(() => {}); } catch (err) { /* optional */ } }
+function openAgentDialog(key) {
+  Base.select(key);
+  const a = crewList().find((x) => x.key === key); if (!a) return;
+  const col = Base.AGENT_COLOR[key];
+  const st = { working: ["Arbeitet", "blue"], idle: ["Bereit", "green"], paused: ["Pausiert", ""], error: ["Fehler", "red"], waiting: ["Wartet", "blue"] }[a.status] || [a.status, ""];
+  $("#agentDialogBody").innerHTML = `<div class="ed"><div class="ed-h"><div class="ha-av" style="background:${col};width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff">${agentIcon(key)}</div>
+    <div style="flex:1;min-width:0"><b>${esc(a.name)}</b><div class="crew-t">${esc(a.role)}</div></div><span class="chip ${st[1]}">${st[0]}</span>
+    <button class="icon-btn" data-ag="close" aria-label="Schließen">${ic("i-x")}</button></div>
+    <div class="ed-b" style="background:var(--bg-elev);gap:12px">
+      <div style="font-size:14px">${esc(a.task || "–")}</div>
+      ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}
+      ${a.last_error ? `<div class="chip red" style="white-space:normal">${esc(a.last_error)}</div>` : ""}
+      <div class="crew-t">${key === "automator" ? `${[...state.autos.values()].filter((x) => x.enabled).length} aktive Automatisierungen` : `${a.processed ?? 0} erledigt · ${a.failed ?? 0} Fehler${a.avg_duration ? ` · Ø ${a.avg_duration} s pro Auftrag` : ""}`}</div>
+    </div>
+    <div class="ed-f">${key === "automator" ? `<button class="btn primary" data-ag="autos">${ic("i-bolt")}Automatisierungen öffnen</button>` : `
+      <button class="btn" data-ag="toggle">${ic(a.enabled ? "i-pause" : "i-play")}${a.enabled ? "Pausieren" : "Fortsetzen"}</button>
+      ${a.manual ? `<button class="btn" data-ag="run">${ic("i-bolt")}Jetzt ausführen</button>` : ""}
+      ${a.video_id ? `<button class="btn" data-ag="video">${ic("i-video")}Video #${a.video_id}</button>` : ""}
+      <span class="grow"></span><button class="btn primary" data-ag="admin">${ic("i-shield")}Im Admin-Center</button>`}</div></div>`;
+  const d = $("#agentDialog"); d.dataset.key = key;
+  if (!d.open) d.showModal();
+}
+$("#agentDialog").addEventListener("close", () => Base.deselect());
+$("#agentDialogBody").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-ag]"); if (!b) return;
+  const key = $("#agentDialog").dataset.key, act = b.dataset.ag, d = $("#agentDialog");
+  if (act === "close") d.close();
+  else if (act === "toggle") { await agentAction(key, state.agents[key].enabled ? "pause" : "resume"); openAgentDialog(key); }
+  else if (act === "run") { await agentAction(key, "run"); d.close(); }
+  else if (act === "video") { d.close(); openVideo(state.agents[key].video_id); }
+  else if (act === "autos") { d.close(); go("automations"); }
+  else if (act === "admin") { d.close(); state.adminOpen = key; go("admin"); }
 });
+
+// ======================================================================
+// Admin-Center: agents
+// ======================================================================
+const MODELS = [["", "Standard (Einstellungen)"], ["claude-opus-5-5", "Claude Opus 5.5"], ["claude-sonnet-5-5", "Claude Sonnet 5.5"], ["claude-haiku-5-5", "Claude Haiku 5.5"]];
+const AGENT_SETTINGS_HINT = { voice: "Stimme & Anbieter stellst du unter Einstellungen → Stimme ein.", visuals: "Pexels-Schlüssel unter Einstellungen → Bild & Schnitt.",
+  editor: "Untertitel-Farbe, Schrift und Musik unter Einstellungen → Bild & Schnitt.", publisher: "Plattformen & Zugänge unter Zeitplan & Freigabe bzw. Einstellungen.",
+  producer: "Zeitplan, Videos pro Tag und Wochentage unter Faceless-Kanal → Zeitplan & Freigabe." };
+async function loadAdmin() {
+  state.admin = await api("/api/admin/agents");
+  renderAdmin();
+}
+async function renderAdmin() {
+  const list = state.admin || [];
+  const working = list.filter((a) => a.status === "working").length, err = list.filter((a) => a.status === "error").length, paused = list.filter((a) => !a.enabled).length;
+  const failedVideos = [...state.videos.values()].filter((v) => ["failed", "publish_failed"].includes(v.status)).length;
+  const open = state.adminOpen;
+  $("#adminView").innerHTML = `<div class="settings-col">
+    <div class="kpi-strip">
+      ${kmini("i-users", "#0a84ff", list.length, "Agenten", "admin")}${kmini("i-factory", "#0a84ff", working, "Arbeiten gerade", "home")}
+      ${kmini("i-pause", "#8e8e93", paused, "Pausiert", "admin")}${kmini("i-warn", "#ff3b30", err, "Mit Fehler", "log")}${kmini("i-video", "#ff9500", failedVideos, "Fehlgeschlagene Videos", "videos")}
+    </div>
+    <div class="admin-bar"><div class="group-title" style="padding:0">${ic("i-shield")}Agenten verwalten</div><span class="grow"></span>
+      <button class="btn" data-adm="pauseall">${ic("i-pause")}Alle pausieren</button><button class="btn" data-adm="resumeall">${ic("i-play")}Alle starten</button>
+      <button class="btn" data-adm="retry" ${failedVideos ? "" : "disabled"}>${ic("i-refresh")}Fehlgeschlagene neu starten</button></div>
+    <div class="agent-admin">
+      <div class="aa-head" style="padding-top:12px"><span></span><span>Agent</span><span class="tk">Aktuelle Aufgabe</span><span class="st">Erledigt</span><span class="st">Fehler</span><span class="st">Ø Dauer</span><span style="text-align:right">Aktiv</span></div>
+      ${list.map((a) => { const col = Base.AGENT_COLOR[a.key]; const isOpen = open === a.key; return `
+      <div style="border-top:1px solid var(--line)" data-agent-row="${a.key}">
+        <div class="aa-row">
+          <div class="aa-av" style="background:${col}1f;color:${col}">${agentIcon(a.key)}<span class="st ${a.status}" style="position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg-elev);background:${{ working: "var(--accent)", error: "var(--red)", paused: "var(--text-3)", waiting: "var(--indigo)" }[a.status] || "var(--green)"}"></span></div>
+          <div style="min-width:0"><b>${esc(a.name)}</b>${a.name !== a.default_name ? ` <span class="vmeta">(${esc(a.default_name)})</span>` : ""}<div class="crew-t">${esc(a.role)}</div></div>
+          <div class="aa-task" style="min-width:0"><div class="crew-t" style="white-space:normal;color:${a.status === "error" ? "var(--red)" : "var(--text)"}">${esc(a.task || "–")}</div>
+            ${a.status === "working" && a.progress != null ? `<div class="bar" style="margin-top:5px"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</div>
+          <div class="aa-stat"><b>${a.processed}</b><small>seit Start</small></div>
+          <div class="aa-stat"><b style="color:${a.failed ? "var(--red)" : "inherit"}">${a.failed}</b><small>${a.errors_24h} in 24 h</small></div>
+          <div class="aa-stat"><b>${a.avg_duration != null ? a.avg_duration + " s" : "–"}</b><small>${a.last_activity ? "aktiv vor " + ago(a.last_activity) : "–"}</small></div>
+          <div class="aa-ctrl"><label class="switch" title="Aktiv"><input type="checkbox" data-adm-sw="${a.key}" ${a.enabled ? "checked" : ""} aria-label="${esc(a.name)} aktiv"><span></span></label>
+            <button class="icon-btn" data-adm="open" data-key="${a.key}" title="Konfigurieren" aria-expanded="${isOpen}">${ic(isOpen ? "i-up" : "i-sliders")}</button></div>
+        </div>
+        ${isOpen ? `<div class="aa-detail">
+          <div class="settings-col" style="gap:12px">
+            <div class="field"><label for="cfg-name">Anzeigename</label><input class="input" id="cfg-name" value="${esc(a.config.display_name || "")}" placeholder="${esc(a.default_name)}"></div>
+            ${a.uses_llm ? `<div class="field"><label for="cfg-model">KI-Modell für diesen Agenten</label><select class="select" id="cfg-model">${MODELS.map(([v, l]) => `<option value="${v}" ${v === (a.config.model || "") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+            <div class="field"><label for="cfg-ins">Zusätzliche Anweisungen</label><textarea class="input" id="cfg-ins" rows="4" placeholder="z. B. Immer mit einer überraschenden Zahl beginnen. Keine Anglizismen.">${esc(a.config.instructions || "")}</textarea></div>`
+              : `<div class="crew-t" style="white-space:normal">${esc(AGENT_SETTINGS_HINT[a.key] || "")}</div>`}
+            <div class="row"><button class="btn primary" data-adm="save" data-key="${a.key}">${ic("i-check")}Speichern</button>
+              ${a.manual ? `<button class="btn" data-adm="run" data-key="${a.key}">${ic("i-bolt")}Jetzt ausführen</button>` : ""}
+              <button class="btn" data-adm="restart" data-key="${a.key}">${ic("i-refresh")}Neu starten</button></div>
+            ${a.last_error ? `<div class="chip red" style="white-space:normal">Letzter Fehler: ${esc(a.last_error)}</div>` : ""}
+          </div>
+          <div><div class="field"><label>Letzte Aktivität</label></div><div class="log-view" id="adminLog">Lade …</div></div>
+        </div>` : ""}
+      </div>`; }).join("")}
+    </div>
+  </div>`;
+  if (open) {
+    const logs = await api(`/api/logs?agent=${open}&limit=40`);
+    const el = $("#adminLog"); if (el) el.innerHTML = logs.reverse().map(logLine).join("") || '<div class="crew-t">Noch keine Einträge.</div>';
+  }
+}
+$("#adminView").addEventListener("click", async (e) => {
+  const k = e.target.closest("[data-hgo]"); if (k) return go(k.dataset.hgo);
+  const b = e.target.closest("[data-adm]"); if (!b) return;
+  const act = b.dataset.adm, key = b.dataset.key;
+  if (act === "open") { state.adminOpen = state.adminOpen === key ? null : key; return renderAdmin(); }
+  if (act === "pauseall" || act === "resumeall") { applyState(await api(`/api/agents/all/${act === "pauseall" ? "pause" : "resume"}`, { body: {} })); toast(act === "pauseall" ? "Alle Agenten pausiert" : "Alle Agenten laufen"); return loadAdmin(); }
+  if (act === "retry") { const r = await api("/api/admin/retry-failed", { body: {} }); toast("Neu gestartet", `${r.retried} Videos laufen erneut`); return loadAdmin(); }
+  if (act === "save") {
+    const body = { display_name: $("#cfg-name").value };
+    if ($("#cfg-model")) { body.model = $("#cfg-model").value; body.instructions = $("#cfg-ins").value; }
+    await api(`/api/admin/agents/${key}`, { method: "PUT", body }); toast("Gespeichert", "Die Änderungen gelten ab dem nächsten Auftrag."); refreshState(); return loadAdmin();
+  }
+  if (act === "run") { await agentAction(key, "run"); return loadAdmin(); }
+  if (act === "restart") { await agentAction(key, "restart"); toast("Neu gestartet"); return loadAdmin(); }
+});
+$("#adminView").addEventListener("change", async (e) => { const k = e.target.dataset.admSw; if (k) { await agentAction(k, e.target.checked ? "resume" : "pause"); loadAdmin(); } });
+
+// ======================================================================
+// Automations: full run history page
+// ======================================================================
+function renderRuns() {
+  const list = state.runs;
+  $("#runsView").innerHTML = `<div class="card"><div class="card-h"><h2>Alle Läufe</h2><span class="meta">${list.length} gespeichert</span></div>
+    <div class="runs">${list.map((r) => `<div class="run" data-run="${r.id}"><span class="t">${new Date(r.started_at * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="font-weight:600">${esc(r.automation_name || "")}</b> <span class="vmeta">· ${esc(TRIGGERS[r.trigger?.type]?.label || "")} · ${r.results.length} Schritte</span></span>
+      <span class="dur vmeta">${r.finished_at ? ((r.finished_at - r.started_at) < 1 ? "<1 s" : Math.round(r.finished_at - r.started_at) + " s") : ""}</span>${statusChip(r.status)}</div>`).join("") || '<div class="li-s">Noch keine Läufe.</div>'}</div></div>`;
+}
+$("#runsView").addEventListener("click", (e) => { const r = e.target.closest("[data-run]"); if (r) openRun(+r.dataset.run); });
 
 // ======================================================================
 // Automations: spec, templates, list, editor, runs
@@ -841,7 +926,7 @@ $("#autoView").addEventListener("change", async (e) => {
   if (e.target.dataset.a !== "toggle") return;
   const id = +e.target.closest("[data-auto]").dataset.auto;
   const a = await api(`/api/automations/${id}/toggle`, { body: { enabled: e.target.checked } });
-  state.autos.set(a.id, a); renderAutomations(); renderHud();
+  state.autos.set(a.id, a); renderAutomations(); renderHome();
   toast(a.enabled ? "Aktiviert" : "Deaktiviert", a.name);
 });
 function onRun(run) {
@@ -851,7 +936,8 @@ function onRun(run) {
   const a = state.autos.get(run.automation_id);
   if (a) { a.running = run.status === "running"; if (run.status !== "running") { a.last_status = run.status; } }
   if (state.page === "automations") renderAutomations();
-  renderHud();
+  if (state.page === "runs") renderRuns();
+  renderHome();
   if ($("#runDialog").open && +$("#runDialog").dataset.run === run.id) openRun(run.id);
 }
 
@@ -959,7 +1045,7 @@ async function saveDraft() {
   draft.id = a.id; draft.webhook_path = a.webhook_path;
   $("#autoEditor").close();
   if (state.page !== "automations") go("automations"); else renderAutomations();
-  renderHud();
+  renderHome();
   toast("Gespeichert", a.name);
   return a;
 }

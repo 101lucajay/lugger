@@ -35,13 +35,22 @@ class Agent:
         self.processed = 0
         self.failed = 0
         self.started_at: float | None = None
+        self.durations: list[float] = []
+        self.last_activity: float | None = None
         self._kick = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     # ---------- live state ----------
+    @property
+    def display_name(self) -> str:
+        from .. import config
+        return config.agent_cfg(self.key).get("display_name") or self.name
+
     def state(self) -> dict[str, Any]:
         return {
-            "key": self.key, "name": self.name, "role": self.role, "icon": self.icon,
+            "key": self.key, "name": self.display_name, "default_name": self.name, "role": self.role, "icon": self.icon,
+            "avg_duration": round(sum(self.durations) / len(self.durations), 1) if self.durations else None,
+            "last_activity": self.last_activity,
             "enabled": self.enabled, "status": self.status, "task": self.task,
             "progress": self.progress, "video_id": self.video_id,
             "last_error": self.last_error, "processed": self.processed, "failed": self.failed,
@@ -66,6 +75,7 @@ class Agent:
         self.log(task)
 
     def log(self, message: str, level: str = "info", video_id: int | None = None) -> None:
+        self.last_activity = time.time()
         entry = db.add_log(self.key, level, message, video_id if video_id is not None else self.video_id)
         bus.publish("log", entry)
 
@@ -114,6 +124,14 @@ class Agent:
         self.task = "Wartet auf Arbeit" if self.enabled else "Pausiert"
         self._task = asyncio.create_task(self._loop(), name=f"agent-{self.key}")
 
+    async def restart(self) -> None:
+        await self.stop()
+        self.last_error = ""
+        self.video_id = None
+        self.start()
+        self.log("Agent neu gestartet")
+        self._emit()
+
     async def stop(self) -> None:
         if self._task:
             self._task.cancel()
@@ -152,6 +170,7 @@ class Agent:
                 try:
                     await self.process(item)
                     self.processed += 1
+                    self.durations = (self.durations + [time.time() - self.started_at])[-20:]
                     self.video_id = None
                     self.started_at = None
                     self.set_status("idle", "Fertig – wartet auf Arbeit")

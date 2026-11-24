@@ -232,8 +232,10 @@ def add_log(agent: str, level: str, message: str, video_id: int | None = None) -
             "message": message, "video_id": video_id}
 
 
-def recent_logs(limit: int = 200, video_id: int | None = None) -> list[dict]:
-    if video_id:
+def recent_logs(limit: int = 200, video_id: int | None = None, agent: str | None = None) -> list[dict]:
+    if agent:
+        rows = query("SELECT * FROM logs WHERE agent=? ORDER BY id DESC LIMIT ?", (agent, limit))
+    elif video_id:
         rows = query("SELECT * FROM logs WHERE video_id=? ORDER BY id DESC LIMIT ?", (video_id, limit))
     else:
         rows = query("SELECT * FROM logs ORDER BY id DESC LIMIT ?", (limit,))

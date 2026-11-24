@@ -130,8 +130,45 @@ async def state():
 
 
 @app.get("/api/logs")
-async def logs(limit: int = 200, video_id: int | None = None):
-    return db.recent_logs(limit, video_id)
+async def logs(limit: int = 200, video_id: int | None = None, agent: str | None = None):
+    return db.recent_logs(limit, video_id, agent)
+
+
+# ---------------- admin center ----------------
+
+LLM_AGENTS = {"trend_scout", "script_writer"}
+
+
+@app.get("/api/admin/agents")
+async def admin_agents():
+    day = __import__("time").time() - 86400
+    out = []
+    for a in registry.AGENTS:
+        row = db.query_one("SELECT SUM(level='error') AS errors, COUNT(*) AS n FROM logs WHERE agent=? AND ts>=?", (a.key, day)) or {}
+        out.append({**a.state(), "config": config.agent_cfg(a.key), "uses_llm": a.key in LLM_AGENTS,
+                    "errors_24h": row.get("errors") or 0, "log_lines_24h": row.get("n") or 0})
+    return out
+
+
+@app.put("/api/admin/agents/{key}")
+async def admin_agent_update(key: str, payload: dict = Body(...)):
+    try:
+        agent = registry.get(key)
+    except KeyError:
+        raise HTTPException(404, "Agent unbekannt")
+    config.set_agent_cfg(key, payload)
+    agent.log("Konfiguration im Admin-Center geändert")
+    bus.publish("agent", agent.state())
+    return {**agent.state(), "config": config.agent_cfg(key), "uses_llm": key in LLM_AGENTS}
+
+
+@app.post("/api/admin/retry-failed")
+async def admin_retry_failed():
+    failed = db.query("SELECT id FROM videos WHERE status IN ('failed', 'publish_failed')")
+    for row in failed:
+        await retry(row["id"])
+    db.add_log("system", "info", f"{len(failed)} fehlgeschlagene Videos erneut gestartet")
+    return {"retried": len(failed)}
 
 
 # ---------------- agents ----------------
@@ -150,6 +187,8 @@ async def agent_action(key: str, action: str):
         if not agent.enabled:
             agent.resume()
         await agent.run_now()
+    elif action == "restart":
+        await agent.restart()
     else:
         raise HTTPException(400, "Unbekannte Aktion")
     return agent.state()

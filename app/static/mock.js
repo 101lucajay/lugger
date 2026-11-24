@@ -18,8 +18,9 @@
     ["Wie KI Wettervorhersagen revolutioniert", "KI schlägt klassische Modelle", "Eine KI sagt das Wetter besser voraus als Supercomputer.", 6.8],
     ["KI-Agenten buchen jetzt deinen Urlaub", "Agenten, die selbst im Web handeln", "Was, wenn deine KI selbst einkauft?", 8.9],
   ];
-  const A = (key, name, role, icon, manual = false) => ({ key, name, role, icon, enabled: true, status: "idle", task: "Wartet auf Arbeit",
-    progress: null, video_id: null, last_error: "", processed: 0, failed: 0, started_at: null, manual });
+  const A = (key, name, role, icon, manual = false) => ({ key, name, default_name: name, role, icon, enabled: true, status: "idle", task: "Wartet auf Arbeit",
+    progress: null, video_id: null, last_error: "", processed: 0, failed: 0, started_at: null, manual, avg_duration: null, last_activity: null });
+  const agentCfg = {};
   const agents = {
     trend_scout: A("trend_scout", "Trend-Scout", "Findet angesagte Themen & Videoideen", "🔭", true),
     producer: A("producer", "Produktionsleiter", "Plant Veröffentlichungen & startet Produktionen", "🎬", true),
@@ -62,6 +63,7 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   function log(agent, message, video_id = null, level = "info") {
     const e = { id: lid++, ts: NOW(), agent, level, message, video_id };
+    if (agents[agent]) agents[agent].last_activity = e.ts;
     logs.push(e); if (logs.length > 600) logs.shift();
     emit("log", e);
   }
@@ -192,6 +194,7 @@
       if (si !== j.step) { j.step = si; a.task = st.steps[si]; log(st.agent, st.steps[si], j.v.id); }
       if (k >= 1) {
         a.processed++; delete jobs[st.agent];
+        a.avg_duration = Math.round(((a.avg_duration || st.dur) * 3 + st.dur) / 4 * 10) / 10;
         const patch = {};
         if (st.agent === "script_writer") { patch.script = script(j.v.topic); patch.title = j.v.topic; }
         if (st.to === "AFTER_RENDER") {
@@ -307,6 +310,14 @@
     const p = url.pathname.replace(/^\/api\//, "").split("/");
     try {
       if (p[0] === "state") return respond(stateObj());
+      if (p[0] === "admin") {
+        if (p[1] === "agents" && !p[2]) return respond(Object.values(agents).map((a) => ({ ...clone(a), config: agentCfg[a.key] || {}, uses_llm: ["trend_scout", "script_writer"].includes(a.key),
+          errors_24h: logs.filter((l) => l.agent === a.key && l.level === "error").length, log_lines_24h: logs.filter((l) => l.agent === a.key).length })));
+        if (p[1] === "agents" && method === "PUT") { const a = agents[p[2]]; const c = (agentCfg[a.key] ||= {});
+          for (const k of ["display_name", "model", "instructions"]) if (k in body) { if (body[k]) c[k] = body[k]; else delete c[k]; }
+          a.name = c.display_name || a.default_name; log(a.key, "Konfiguration im Admin-Center geändert"); pushAgent(a.key); return respond({ ...clone(a), config: c }); }
+        if (p[1] === "retry-failed") { let n = 0; for (const v of videos.values()) if (v.status === "failed" || v.status === "publish_failed") { setVideo(v, { status: "approved", error: null }); n++; } return respond({ retried: n }); }
+      }
       if (p[0] === "automations") {
         if (p[1] === "runs") return respond(clone(runs.slice(0, +url.searchParams.get("limit") || 30)).map((r) => ({ ...r, automation_name: autos.get(r.automation_id)?.name || "" })));
         if (p.length === 1 && method === "POST") { if (!body.name) return respond({ detail: "Bitte gib der Automatisierung einen Namen." }, 400); const a = addAuto({ name: body.name, description: body.description || "", enabled: body.enabled !== false, trigger: body.trigger, steps: body.steps || [] }); emit("automation", autoOut(a)); return respond(autoOut(a)); }
@@ -319,8 +330,8 @@
         if (p[2] === "runs") return respond(clone(runs.filter((r) => r.automation_id === a.id)));
       }
       if (p[0] === "logs") {
-        const vidq = +url.searchParams.get("video_id") || null, lim = +url.searchParams.get("limit") || 200;
-        return respond(logs.filter((l) => !vidq || l.video_id === vidq).slice(-lim));
+        const vidq = +url.searchParams.get("video_id") || null, lim = +url.searchParams.get("limit") || 200, ag = url.searchParams.get("agent");
+        return respond(logs.filter((l) => (!vidq || l.video_id === vidq) && (!ag || l.agent === ag)).slice(-lim));
       }
       if (p[0] === "settings") { if (method === "POST") Object.assign(settings, body); return respond(clone(settings)); }
       if (p[0] === "autopilot") { settings.autopilot = !!body.on; if (settings.autopilot) nextProd = simT + 4; log("system", `Autopilot ${settings.autopilot ? "an" : "aus"}`); return respond(stateObj()); }
@@ -330,6 +341,7 @@
         if (p[2] === "pause") { a.enabled = false; if (a.status !== "working") Object.assign(a, { status: "paused", task: "Pausiert" }); log(a.key, "Agent pausiert"); }
         if (p[2] === "resume") { a.enabled = true; if (a.status === "paused") Object.assign(a, { status: "idle", task: "Wartet auf Arbeit" }); log(a.key, "Agent fortgesetzt"); }
         if (p[2] === "run") { a.enabled = true; a.key === "trend_scout" ? scout(true) : produce(); }
+        if (p[2] === "restart") { a.last_error = ""; if (a.status === "error") Object.assign(a, { status: "idle", task: "Wartet auf Arbeit" }); log(a.key, "Agent neu gestartet"); }
         pushAgent(a.key);
         return respond(clone(a));
       }
