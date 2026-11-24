@@ -8,11 +8,21 @@ Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im 
 
 ## Das Dashboard
 
-Die Startseite ist die **Agentenbasis**: ein fester Grundriss von oben, der immer vollständig sichtbar ist. Er lässt sich
-nicht verschieben, drehen oder zoomen. Die acht Abteilungen sind nach dem Ablauf nummeriert (1 Trend-Radar →
-8 Versand), rechts liegt das Automations-Werk. Die Agenten arbeiten an ihren Plätzen und tragen jedes Video als
-Kachel durch den Hauptgang zur nächsten Abteilung. Rund um den Grundriss zeigt das Dashboard Kennzahlen, die Crew,
-offene Freigaben, die letzten Automations-Läufe und einen Live-Feed. Ein Klick auf einen Agenten öffnet seine Details.
+Die Startseite ist die **Produktionsstraße**: eine große Seitenansicht wie in einem Autowerk, nur dass hier Videos
+gebaut werden. Jedes Video fährt als Werkstück auf dem Fließband von Station zu Station und wird sichtbar
+zusammengesetzt: Idee → Plan → Skript → Tonspur → Filmmaterial → fertiges Video → Prüfung → Versand.
+Hinter dem Band arbeiten die Agenten (im Anzug, mit Sonnenbrille und Headset, Krawatte in Abteilungsfarbe).
+Am Ende liegt die Nebenhalle mit dem Automations-Werk, wo ein Roboter und zwei Industrie-Roboterarme deine
+Automatisierungen ausführen.
+
+- **Wischen/Ziehen** nach links und rechts (oder Trackpad, Pfeiltasten, die Pfeil-Knöpfe) bewegt dich die Straße entlang.
+  Die Höhe ist fest, es gibt kein Zoomen oder Drehen.
+- **Stations-Leiste** unter der Straße: springt direkt zu einer Station und zeigt deren Status.
+- **Live folgen**: Die Ansicht fährt automatisch zur Station, an der gerade gearbeitet wird.
+- Klick auf einen Agenten zeigt seine Details, Klick auf ein Werkstück öffnet das Video, und ein Klick auf die
+  Prüf-Station öffnet das nächste Video, das auf deine Freigabe wartet.
+
+Darunter: Kennzahlen, offene Freigaben, die Crew, Automations-Läufe und ein Live-Feed.
 
 Die **Seitenleiste** ist ausgeklappt (einklappbar) und in Untermenüs gegliedert:
 
