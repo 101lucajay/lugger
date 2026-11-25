@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -60,10 +60,10 @@
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark"><svg class="i"><use href="#i-factory"/></svg></div>
-      <div class="brand-text"><div class="brand-name">Lugger</div><div class="brand-sub">Agentenbasis</div></div>
+      <div class="brand-text"><div class="brand-name">Lugger</div><div class="brand-sub">Kommandozentrale</div></div>
       <button class="icon-btn collapse-btn" id="collapseBtn" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen"><svg class="i"><use href="#i-chevl"/></svg></button>
     </div>
-    <button class="nav active" data-page="home" title="Agentenbasis"><svg class="i"><use href="#i-home"/></svg><span>Agentenbasis</span><span class="count blue" id="liveCount" hidden></span></button>
+    <button class="nav active" data-page="home" title="Agentenbasis"><svg class="i"><use href="#i-home"/></svg><span>Kommandozentrale</span><span class="count blue" id="liveCount" hidden></span></button>
 
     <div class="nav-group" data-group="auto">
       <button class="nav-head" data-toggle="auto"><span>Automatisierungen</span><svg class="i chev"><use href="#i-chevd"/></svg></button>
@@ -97,7 +97,7 @@
         <div class="pilot-sub" id="pilotSub">–</div>
       </div>
       <div class="side-tools">
-        <button class="icon-btn" id="themeBtn" title="Erscheinungsbild"><svg class="i"><use href="#i-moon"/></svg></button>
+        <button class="icon-btn" id="themeBtn" title="Erscheinungsbild" hidden><svg class="i"><use href="#i-moon"/></svg></button>
         <a class="icon-btn" href="/logout" id="logout" title="Abmelden" hidden><svg class="i"><use href="#i-logout"/></svg></a>
       </div>
     </div>
@@ -106,7 +106,7 @@
   <div class="main">
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menü"><svg class="i"><use href="#i-menu"/></svg></button>
-      <div class="tb-title"><h1 id="pageTitle">Agentenbasis</h1><div class="sub" id="pageSub"></div></div>
+      <div class="tb-title"><h1 id="pageTitle">Kommandozentrale</h1><div class="sub" id="pageSub"></div></div>
       <div class="top-actions">
         <span class="live" id="live"><i></i><span>Offline</span></span>
         <button class="btn primary" id="produceNow"><svg class="i"><use href="#i-play"/></svg>Video produzieren</button>
@@ -123,17 +123,19 @@
             <button class="btn" data-home="automation"><svg class="i"><use href="#i-bolt"/></svg>Neue Automatisierung</button>
           </div>
         </div>
+        <div class="kpi-strip" id="hKpis"></div>
         <div class="card line-card">
-          <div class="card-h"><h2>Produktionsstraße · live</h2>
-            <div class="legend"><span><i style="background:#0a84ff"></i>In Arbeit</span><span><i style="background:#ff9500"></i>Wartet auf dich</span><span><i style="background:#34c759"></i>Fertig</span><span><i style="background:#ff3b30"></i>Fehler</span></div></div>
+          <div class="card-h"><h2>Produktionslinie</h2>
+            <div class="legend"><span><i style="background:#38bdf8"></i>In Arbeit</span><span><i style="background:#f59e0b"></i>Wartet auf dich</span><span><i style="background:#f43f5e"></i>Fehler</span></div></div>
           <div id="line"></div>
         </div>
-        <div class="kpi-strip" id="hKpis"></div>
-        <div class="home-grid3">
-          <div class="card"><div class="card-h"><h2>Wartet auf dich</h2><span class="meta" id="hApproveN"></span></div><div id="hApprove"></div></div>
-          <div class="card"><div class="card-h"><h2>Crew</h2><button class="btn plain small" data-goto="admin">Verwalten</button></div><div class="crew-list" id="crewStrip"></div></div>
-          <div class="card"><div class="card-h"><h2>Automatisierungen</h2><button class="btn plain small" data-goto="automations">Alle</button></div><div id="hAutos"></div>
-            <div class="card-h" style="margin:16px 0 8px"><h2>Live</h2><span class="live on"><i></i></span></div><div class="feed" id="hFeed"></div></div>
+        <div class="home-grid">
+          <div class="card"><div class="card-h"><h2>Video-Tracker</h2><span class="meta" id="trackMeta"></span></div><div class="tracker" id="tracker"></div></div>
+          <div class="home-side">
+            <div class="card"><div class="card-h"><h2>Wartet auf dich</h2><span class="meta" id="hApproveN"></span></div><div id="hApprove"></div></div>
+            <div class="card"><div class="card-h"><h2>Automations-Werk</h2><button class="btn plain small" data-goto="automations">Alle</button></div><div id="hAutos"></div></div>
+            <div class="card"><div class="card-h"><h2>Live</h2><span class="live on"><i></i></span></div><div class="feed" id="hFeed"></div></div>
+          </div>
         </div>
       </section>
 
@@ -244,7 +246,8 @@
 <dialog class="modal agentdlg" id="agentDialog"><div id="agentDialogBody"></div></dialog>
 <dialog class="modal runs" id="runDialog"><div id="runDialogBody"></div></dialog>
 <div class="toasts" id="toasts"></div>
-<script src="/static/line.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap">
+<script src="/static/pipeline.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

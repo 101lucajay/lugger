@@ -3,7 +3,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ic = (id, cls = "i") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
-const agentIcon = (key) => `<svg class="i" viewBox="0 0 24 24"><path d="${Line.ICONS[key] || ""}"/></svg>`;
+const agentIcon = (key) => `<svg class="i" viewBox="0 0 24 24"><path d="${Pipeline.ICONS[key] || ""}"/></svg>`;
 
 const STATUS = {
   queued: ["Warteschlange", "blue"], scripting: ["Skript", "blue"], scripted: ["Skript fertig", "blue"],
@@ -19,7 +19,7 @@ const AGENT_STATUS = { working: "Arbeitet", idle: "Bereit", paused: "Pausiert", 
 const PLATFORMS = [["youtube", "YouTube Shorts", "#ff3b30"], ["tiktok", "TikTok", "#25c2d6"], ["instagram", "Instagram Reels", "#e1306c"]];
 const MODE_LABEL = { off: "Aus", direct: "Offizielle API", uploadpost: "upload-post.com" };
 const PAGES = {
-  home: ["Agentenbasis", "Live – deine Agenten bei der Arbeit"], stats: ["Statistik", ""], runs: ["Automatisierungen · Verlauf", "Alle Läufe mit Ergebnissen"],
+  home: ["Kommandozentrale", "Live – deine Agenten und Videos"], stats: ["Statistik", ""], runs: ["Automatisierungen · Verlauf", "Alle Läufe mit Ergebnissen"],
   admin: ["Admin-Center · Agenten", "Agenten verwalten, konfigurieren und überwachen"], videos: ["Videos", "Prüfen, freigeben, verwalten"],
   ideas: ["Ideen", "Themen für kommende Videos"], channel: ["Kanal-Steuerung", "Zeitplan, Freigabe & Agenten des Faceless-Kanals"],
   automations: ["Automatisierungen", "Eigene Abläufe: Auslöser → Schritte"],
@@ -53,7 +53,7 @@ function currentTheme() {
   return t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 }
 function applyThemeIcon() { $("#themeBtn").innerHTML = ic(currentTheme() === "dark" ? "i-sun" : "i-moon"); }
-try { const t = localStorage.getItem("lugger.theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) { /* optional */ }
+document.documentElement.setAttribute("data-theme", "dark");   // the command centre is dark by design
 $("#themeBtn").addEventListener("click", () => {
   const next = currentTheme() === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
@@ -76,7 +76,7 @@ function go(page) {
   $("#pageTitle").textContent = PAGES[page][0];
   $("#pageSub").textContent = page === "stats" ? (state.s?.niche || "") : PAGES[page][1];
   $("#sidebar").classList.remove("open");
-  page === "home" ? Line.start() : Line.stop();
+  page === "home" ? Pipeline.start() : Pipeline.stop();
   if (page === "home") renderHome();
   if (page === "admin") loadAdmin();
   if (page === "runs") renderRuns();
@@ -197,7 +197,7 @@ function renderFunnel(vids) {
 function renderAgentList() {
   const list = Object.values(state.agents);
   $("#agentList").innerHTML = list.map((a) => {
-    const col = Line.AGENT_COLOR[a.key];
+    const col = Pipeline.AGENT_COLOR[a.key];
     return `<div class="li"><div class="li-ico" style="background:${col}1f;color:${col}">${agentIcon(a.key)}</div>
       <div style="min-width:0"><div class="li-t">${esc(a.name)}</div><div class="li-s">${esc(a.status === "working" || a.status === "error" || a.status === "waiting" ? a.task : a.role)}</div>
       ${a.status === "working" && a.progress != null ? `<div class="bar" style="margin-top:6px;max-width:320px"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</div>
@@ -273,7 +273,7 @@ function upsertVideo(v) {
   if (!v) return;
   const prev = state.videos.get(v.id);
   state.videos.set(v.id, v);
-  Line.video(v, prev);
+  Pipeline.video(v, prev);
   renderVideos(); if (state.page === "stats") renderOverview(); renderHome();
   const m = $("#videoModal");
   if (m.open && +m.dataset.vid === v.id && !m.dataset.editing && prev?.status !== v.status) openVideo(v.id, true);
@@ -415,7 +415,7 @@ async function renderAutomation() {
 
     <div><div class="group-title">${ic("i-layers")}Agenten</div><div class="group">
       ${Object.values(state.agents).map((a) => {
-        const col = Line.AGENT_COLOR[a.key];
+        const col = Pipeline.AGENT_COLOR[a.key];
         return `<div class="set"><div class="li-ico" style="background:${col}1f;color:${col}">${agentIcon(a.key)}</div>
           <div class="set-l"><div class="set-t">${esc(a.name)}</div><div class="set-s"><span class="dot ${a.status}" style="width:7px;height:7px"></span> ${AGENT_STATUS[a.status] || a.status} · ${esc(a.role)}</div></div>
           <div class="set-c">${a.manual ? `<button type="button" class="btn small" data-run="${a.key}">Ausführen</button>` : ""}<label class="switch"><input type="checkbox" data-agent-sw="${a.key}" ${a.enabled ? "checked" : ""} aria-label="${esc(a.name)} aktiv"><span></span></label></div></div>`;
@@ -534,7 +534,7 @@ async function loadLogs() {
 $("#logFilter").addEventListener("change", (e) => { state.logFilter = e.target.value; loadLogs(); });
 
 // ---------------- production line (home) ----------------
-Line.init($("#line"), {
+Pipeline.init($("#line"), {
   getAgents: () => state.agents,
   getStats: () => state.stats,
   getAutomation: () => ({ active: [...state.autos.values()].filter((a) => a.running).map((a) => ({ name: a.name })),
@@ -560,7 +560,7 @@ function connect() {
     else if (type === "automation_deleted") { state.autos.delete(data.id); if (state.page === "automations") renderAutomations(); }
     else if (type === "automation_run") onRun(data);
     else if (type === "video") { upsertVideo(data); refreshState(); }
-    else if (type === "video_deleted") { state.videos.delete(data.id); Line.deleted(data.id); renderVideos(); refreshState(); }
+    else if (type === "video_deleted") { state.videos.delete(data.id); Pipeline.deleted(data.id); renderVideos(); refreshState(); }
     else if (type === "ideas") { refreshState(); if (state.page === "ideas") loadIdeas(); }
     else if (type === "notify") toast(data.title, data.message);
   };
@@ -575,7 +575,7 @@ setInterval(() => { if (state.page === "stats") renderAgentList(); if (state.pag
   state.runs = runs;
   state.feed = logs.slice(-10).reverse();
   vids.forEach((v) => state.videos.set(v.id, v));
-  Line.loadVideos(vids);
+  Pipeline.loadVideos(vids);
   applyState(s);
   renderVideos();
   go(location.hash.slice(1) || "home");
@@ -641,16 +641,11 @@ function renderHome() {
     kmini("i-send", "#30b45a", st.published, "Veröffentlicht", "stats"),
     kmini("i-bolt", "#00a19a", `${autos.filter((a) => a.enabled).length}`, `Automationen aktiv${autos.some((a) => a.running) ? " · läuft" : ""}`, "automations"),
   ].join("");
-  const sig = JSON.stringify([crewList().map((a) => [a.name, a.status, a.task, Math.round(a.progress || 0)]),
+  const sig = JSON.stringify([crewList().map((a) => [a.name, a.status, a.task, a.video_id]), [...state.videos.values()].map((v) => [v.id, v.status]),
     [...state.videos.values()].filter((v) => v.status === "awaiting_approval").map((v) => v.id), state.runs.slice(0, 5).map((r) => [r.id, r.status])]);
   if (sig === homeSig) return;
   homeSig = sig;
-  $("#crewStrip").innerHTML = crewList().map((a) => {
-    const col = Line.AGENT_COLOR[a.key];
-    return `<button class="crew" data-crew="${a.key}"><span class="crew-av" style="background:${col}1f;color:${col}">${agentIcon(a.key)}<span class="st ${a.status}"></span></span>
-      <span style="min-width:0"><div class="crew-n">${esc(a.name)}</div><div class="crew-t">${esc(a.status === "idle" ? "Bereit" : a.task || "")}</div>
-      ${a.status === "working" && a.progress != null ? `<div class="bar"><div style="width:${Math.round(a.progress)}%;background:${col}"></div></div>` : ""}</span></button>`;
-  }).join("");
+  renderTracker();
   const waiting = [...state.videos.values()].filter((v) => v.status === "awaiting_approval").sort((a, b) => a.id - b.id);
   $("#hApproveN").textContent = waiting.length || "";
   $("#hApprove").innerHTML = waiting.length ? waiting.slice(0, 3).map((v) => `<div class="appr"><div class="appr-th"></div><div style="min-width:0"><div class="appr-t">${esc(v.title || v.topic)}</div>
@@ -661,16 +656,46 @@ function renderHome() {
     : `<div class="crew-t">Noch keine Läufe.</div>`;
   renderFeed();
 }
+// ---------- video tracker: where is every video and what happens to it right now ----------
+const STEP_NAMES = ["Idee", "Plan", "Skript", "Stimme", "Material", "Render", "Freigabe", "Upload"];
+const STEP_AGENT = [null, "producer", "script_writer", "voice", "visuals", "editor", null, "publisher"];
+function renderTracker() {
+  const el = $("#tracker"); if (!el) return;
+  const active = [...state.videos.values()].filter((v) => !["published", "ready", "rejected"].includes(v.status)).sort((a, b) => a.id - b.id);
+  const done = [...state.videos.values()].filter((v) => ["published", "ready"].includes(v.status)).sort((a, b) => b.updated_at - a.updated_at).slice(0, 3);
+  $("#trackMeta").textContent = `${active.length} in Arbeit`;
+  const row = (v) => {
+    const step = v.status === "failed" ? (Pipeline.STATUS_STEP[{ "Skript-Autor": "scripting", "Sprecher": "voicing", "Bild-Redakteur": "sourcing", "Cutter": "rendering", "Publisher": "publishing" }[(/^\[([^\]]+)\]/.exec(v.error || "") || [])[1]]] ?? 1) : (Pipeline.STATUS_STEP[v.status] ?? 1);
+    const finished = step >= 8, cur = Math.min(step, 7);
+    const agentKey = STEP_AGENT[cur], ag = agentKey ? state.agents[agentKey] : null;
+    const col = v.status === "failed" || v.status === "publish_failed" ? "var(--red)" : v.status === "awaiting_approval" ? "var(--orange)" : finished ? "var(--green)" : (Pipeline.AGENT_COLOR[agentKey] || "var(--accent)");
+    let what;
+    if (finished) what = `<b style="color:var(--green)">Online</b> · ${Object.keys(v.publish_results || {}).map((p) => ({ youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram" }[p] || p)).join(", ") || "lokal fertig"}`;
+    else if (v.status === "failed" || v.status === "publish_failed") what = `<b style="color:var(--red)">Fehler</b> · ${esc((v.error || "").replace(/^\[[^\]]+\]\s*/, "").slice(0, 80))}`;
+    else if (v.status === "awaiting_approval") what = `<b style="color:var(--orange)">Wartet auf deine Freigabe</b>`;
+    else if (ag && ag.video_id === v.id && ag.status === "working") what = `<b style="color:${col}">${esc(ag.name)}</b> · ${esc(ag.task || "")}`;
+    else what = `Wartet auf <b>${esc(ag?.name || STEP_NAMES[cur])}</b>`;
+    return `<div class="trk" data-vid="${v.id}"><span class="trk-id">#${v.id}</span>
+      <div style="min-width:0"><div class="trk-t">${esc(v.title || v.topic)}</div><div class="trk-s">${what}</div></div>
+      <div><div class="steps">${STEP_NAMES.map((_, i) => `<i class="${finished || i < cur ? "done" : i === cur ? "cur" : ""}" style="${i === cur && !finished ? `background:${col}` : finished ? "background:var(--green)" : ""}"></i>`).join("")}</div>
+        <div class="steps-l">${STEP_NAMES.map((n, i) => `<span class="${i === cur && !finished ? "cur" : ""}">${n}</span>`).join("")}</div></div>
+      <span class="trk-time">${ago(v.created_at)}</span></div>`;
+  };
+  el.innerHTML = (active.map(row).join("") || '<div class="crew-t" style="padding:8px 4px">Gerade wird kein Video produziert.</div>') +
+    (done.length ? `<div class="card-h" style="margin:16px 0 4px"><h2 style="color:var(--text-2)">Zuletzt fertig</h2></div>${done.map(row).join("")}` : "");
+}
+$("#tracker").addEventListener("click", (e) => { const r = e.target.closest("[data-vid]"); if (r) openVideo(+r.dataset.vid); });
+
 function renderFeed() {
   const el = $("#hFeed"); if (!el) return;
   el.innerHTML = state.feed.slice(0, 8).map((l) => {
-    const col = Line.AGENT_COLOR[l.agent] || (l.agent === "automations" ? "#00b3ab" : "#8e8e93");
+    const col = Pipeline.AGENT_COLOR[l.agent] || (l.agent === "automations" ? "#00b3ab" : "#8e8e93");
     const who = state.agents[l.agent]?.name || ({ automations: "Automatisierung", system: "System" }[l.agent] || l.agent);
     return `<div class="fe"><i style="background:${l.level === "error" ? "var(--red)" : col}"></i><span title="${esc(who)}: ${esc(l.message)}">${esc(l.message)}</span><small>${new Date(l.ts * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</small></div>`;
   }).join("") || '<div class="crew-t">Noch nichts passiert.</div>';
 }
 $("#hKpis").addEventListener("click", (e) => { const b = e.target.closest("[data-hgo]"); if (b) go(b.dataset.hgo); });
-$("#crewStrip").addEventListener("click", (e) => { const b = e.target.closest("[data-crew]"); if (b) openAgentDialog(b.dataset.crew); });
+
 $("[data-view=home]").addEventListener("click", async (e) => {
   const run = e.target.closest("[data-run]"); if (run) return openRun(+run.dataset.run);
   const h = e.target.closest("[data-home]");
@@ -679,9 +704,9 @@ $("[data-view=home]").addEventListener("click", async (e) => {
   if (b.dataset.hq === "approve") await videoAction(+b.dataset.id, "approve"); else openVideo(+b.dataset.id);
 });
 function openAgentDialog(key) {
-  Line.select(key);
+  Pipeline.select(key);
   const a = crewList().find((x) => x.key === key); if (!a) return;
-  const col = Line.AGENT_COLOR[key];
+  const col = Pipeline.AGENT_COLOR[key];
   const st = { working: ["Arbeitet", "blue"], idle: ["Bereit", "green"], paused: ["Pausiert", ""], error: ["Fehler", "red"], waiting: ["Wartet", "blue"] }[a.status] || [a.status, ""];
   $("#agentDialogBody").innerHTML = `<div class="ed"><div class="ed-h"><div class="ha-av" style="background:${col};width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff">${agentIcon(key)}</div>
     <div style="flex:1;min-width:0"><b>${esc(a.name)}</b><div class="crew-t">${esc(a.role)}</div></div><span class="chip ${st[1]}">${st[0]}</span>
@@ -700,7 +725,7 @@ function openAgentDialog(key) {
   const d = $("#agentDialog"); d.dataset.key = key;
   if (!d.open) d.showModal();
 }
-$("#agentDialog").addEventListener("close", () => Line.deselect());
+$("#agentDialog").addEventListener("close", () => Pipeline.deselect());
 $("#agentDialogBody").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-ag]"); if (!b) return;
   const key = $("#agentDialog").dataset.key, act = b.dataset.ag, d = $("#agentDialog");
@@ -738,7 +763,7 @@ async function renderAdmin() {
       <button class="btn" data-adm="retry" ${failedVideos ? "" : "disabled"}>${ic("i-refresh")}Fehlgeschlagene neu starten</button></div>
     <div class="agent-admin">
       <div class="aa-head" style="padding-top:12px"><span></span><span>Agent</span><span class="tk">Aktuelle Aufgabe</span><span class="st">Erledigt</span><span class="st">Fehler</span><span class="st">Ø Dauer</span><span style="text-align:right">Aktiv</span></div>
-      ${list.map((a) => { const col = Line.AGENT_COLOR[a.key]; const isOpen = open === a.key; return `
+      ${list.map((a) => { const col = Pipeline.AGENT_COLOR[a.key]; const isOpen = open === a.key; return `
       <div style="border-top:1px solid var(--line)" data-agent-row="${a.key}">
         <div class="aa-row">
           <div class="aa-av" style="background:${col}1f;color:${col}">${agentIcon(a.key)}<span class="st ${a.status}" style="position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg-elev);background:${{ working: "var(--accent)", error: "var(--red)", paused: "var(--text-3)", waiting: "var(--indigo)" }[a.status] || "var(--green)"}"></span></div>

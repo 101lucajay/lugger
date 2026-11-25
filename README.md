@@ -6,21 +6,17 @@ Untertiteln und lädt sie nach deiner Freigabe auf **TikTok, Instagram Reels und
 
 Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im Dashboard änderbar).
 
-## Das Dashboard
+## Das Dashboard (Kommandozentrale)
 
-Die Startseite ist die **Produktionsstraße**: eine große Seitenansicht wie in einem Autowerk, nur dass hier Videos
-gebaut werden. Jedes Video fährt als Werkstück auf dem Fließband von Station zu Station und wird sichtbar
-zusammengesetzt: Idee → Plan → Skript → Tonspur → Filmmaterial → fertiges Video → Prüfung → Versand.
-Hinter dem Band arbeiten die Agenten (im Anzug, mit Sonnenbrille und Headset, Krawatte in Abteilungsfarbe).
-Am Ende liegt die Nebenhalle mit dem Automations-Werk, wo ein Roboter und zwei Industrie-Roboterarme deine
-Automatisierungen ausführen.
+Die Startseite ist eine dunkle **Kommandozentrale**. Oben stehen die Kennzahlen, darunter die **Produktionslinie**:
+Alle acht Stationen sind gleichzeitig sichtbar (Ideen → Planung → Skript → Stimme → Material → Render →
+Freigabe → Upload), auf schmalen Bildschirmen als 2×4 bzw. 4×2. In jeder Station steht ihr Agent als Operator mit
+leuchtendem Helm-Visier an einer Holo-Konsole, darüber das Hologramm seiner Aufgabe. Die Videos laufen als
+leuchtende Kacheln über die Förderspur darunter.
 
-- **Wischen/Ziehen** nach links und rechts (oder Trackpad, Pfeiltasten, die Pfeil-Knöpfe) bewegt dich die Straße entlang.
-  Die Höhe ist fest, es gibt kein Zoomen oder Drehen.
-- **Stations-Leiste** unter der Straße: springt direkt zu einer Station und zeigt deren Status.
-- **Live folgen**: Die Ansicht fährt automatisch zur Station, an der gerade gearbeitet wird.
-- Klick auf einen Agenten zeigt seine Details, Klick auf ein Werkstück öffnet das Video, und ein Klick auf die
-  Prüf-Station öffnet das nächste Video, das auf deine Freigabe wartet.
+Der **Video-Tracker** zeigt für jedes Video eine 8-Schritt-Fortschrittsleiste, den aktuellen Schritt, welcher Agent
+gerade was damit macht, Fehler oder Wartezeit auf deine Freigabe. Ein Klick öffnet das Video, ein Klick auf eine
+Station den Agenten, ein Klick auf „Freigabe“ das nächste Video, das du prüfen sollst.
 
 Darunter: Kennzahlen, offene Freigaben, die Crew, Automations-Läufe und ein Live-Feed.
 
