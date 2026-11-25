@@ -148,6 +148,19 @@ oder `uploadpost`.
 
 Freigabe abschalten (vollautomatischer Betrieb): Einstellungen → „Vor dem Hochladen Freigabe verlangen“.
 
+## Live-Demo auf GitHub Pages
+
+Bei jedem Push auf `main` baut der Workflow `.github/workflows/pages.yml` die Demo (simulierte Agenten, ohne Server)
+und veröffentlicht sie auf GitHub Pages. Einmalig einrichten:
+
+1. **Settings → Pages → Build and deployment → Source: „GitHub Actions“** wählen.
+2. Bei einem **privaten** Repo braucht Pages einen bezahlten GitHub-Plan (z. B. Pro). Alternativ das Repo öffentlich machen.
+3. **Settings → General → Default branch** auf `main` stellen.
+4. Unter **Actions → „Demo auf GitHub Pages“ → Run workflow** einmal manuell starten (danach automatisch bei jedem Push).
+
+Die Demo ist dann unter `https://<dein-name>.github.io/lugger/` erreichbar. Die echte App mit Agenten, Rendering und
+Uploads braucht einen Server (siehe „Start (Docker)“), GitHub Pages kann nur statische Seiten ausliefern.
+
 ## Projektstruktur
 
 ```
@@ -158,6 +171,7 @@ app/
   llm.py               Claude-Anbindung (strukturierte Antworten + Websuche)
   static/              Dashboard (HTML/CSS/JS, kein Build-Schritt)
 tools/youtube_token.py Hilfsskript für das YouTube Refresh-Token
+tools/build_demo.py    Baut die eigenständige Live-Demo (auch für GitHub Pages)
 data/                  Datenbank, Videos, Musik (Docker-Volume)
 ```
 
