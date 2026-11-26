@@ -24,7 +24,7 @@ def main() -> None:
     body = re.sub(r'<script src="/static/[^"]+"></script>\s*', "", body)
     body = body.replace('href="/logout"', 'href="#overview"')
     css = (STATIC / "style.css").read_text()
-    js = "\n".join((STATIC / n).read_text() for n in ("mock.js", "pipeline.js", "app.js"))
+    js = "\n".join((STATIC / n).read_text() for n in ("mock.js", "network.js", "app.js"))
     page = f"""<title>Lugger Kommandozentrale</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap">

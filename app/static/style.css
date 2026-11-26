@@ -595,3 +595,5 @@ dialog.modal { background: #0c1119; border: 1px solid var(--line-strong); }
   .topbar h1 { font-size: 15px; }
   .line-card { padding: 12px 8px; }
 }
+.nw-wrap { position: relative; }
+.nw-canvas { display: block; }

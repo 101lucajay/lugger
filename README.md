@@ -8,11 +8,15 @@ Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im 
 
 ## Das Dashboard (Kommandozentrale)
 
-Die Startseite ist eine dunkle **Kommandozentrale**. Oben stehen die Kennzahlen, darunter die **Produktionslinie**:
-Alle acht Stationen sind gleichzeitig sichtbar (Ideen → Planung → Skript → Stimme → Material → Render →
-Freigabe → Upload), auf schmalen Bildschirmen als 2×4 bzw. 4×2. In jeder Station steht ihr Agent als Operator mit
-leuchtendem Helm-Visier an einer Holo-Konsole, darüber das Hologramm seiner Aufgabe. Die Videos laufen als
-leuchtende Kacheln über die Förderspur darunter.
+Die Startseite ist eine dunkle **Kommandozentrale**. Oben stehen die Kennzahlen, darunter das **Agenten-Netzwerk**:
+Jeder Agent ist ein leuchtender Knoten mit Statuslicht, Fortschrittsring und seiner aktuellen Aufgabe. Die Knoten
+sind in Ablauf-Reihenfolge verbunden (Trend-Scout → Leitstand → Skript → Stimme → Material → Render → **Du**
+(Freigabe) → Upload → Cloud mit YouTube · TikTok · Instagram).
+
+Videos sind **Datenpakete**: Sie gleiten die Verbindungen entlang und kreisen um den Agenten, der gerade an ihnen
+arbeitet. Veröffentlichte Videos fliegen in die Cloud. Unten hängt der **Automator** mit allen Automatisierungen als
+kleinen Knoten; gestrichelte Linien zeigen, welches Ereignis eine Automatisierung auslöst. Die Ansicht ist fest
+(kein Scrollen oder Zoomen) und wird auf dem Handy senkrecht.
 
 Der **Video-Tracker** zeigt für jedes Video eine 8-Schritt-Fortschrittsleiste, den aktuellen Schritt, welcher Agent
 gerade was damit macht, Fehler oder Wartezeit auf deine Freigabe. Ein Klick öffnet das Video, ein Klick auf eine
