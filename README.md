@@ -84,7 +84,7 @@ docker compose up -d --build
 Danach das Dashboard öffnen: **http://localhost:8000** (auf einem Server: `http://SERVER-IP:8000`).
 Videos, Datenbank und Einstellungen liegen in `./data`.
 
-> Auf einem öffentlichen Server unbedingt `DASHBOARD_PASSWORD` setzen und am besten einen
+> Auf einem öffentlichen Server unbedingt `DASHBOARD_USER` und `DASHBOARD_PASSWORD` setzen und am besten einen
 > Reverse-Proxy mit HTTPS davorschalten (z. B. Caddy: `caddy reverse-proxy --from deine-domain.de --to localhost:8000`).
 
 ### Ohne Docker
@@ -157,6 +157,11 @@ und veröffentlicht sie auf GitHub Pages. Einmalig einrichten:
 2. Bei einem **privaten** Repo braucht Pages einen bezahlten GitHub-Plan (z. B. Pro). Alternativ das Repo öffentlich machen.
 3. **Settings → General → Default branch** auf `main` stellen.
 4. Unter **Actions → „Demo auf GitHub Pages“ → Run workflow** einmal manuell starten (danach automatisch bei jedem Push).
+
+**Login für die Seite:** Die Demo wird beim Veröffentlichen mit AES-256 verschlüsselt und ist nur mit
+Benutzername und Passwort zu öffnen (auch im Quelltext steht nichts Lesbares). Die Zugangsdaten legst du als
+Secrets an: **Settings → Secrets and variables → Actions → New repository secret**, einmal `DEMO_USERNAME` und
+einmal `DEMO_PASSWORD` (mindestens 10 Zeichen). Ohne diese Secrets bricht der Workflow ab und veröffentlicht nichts.
 
 Die Demo ist dann unter `https://<dein-name>.github.io/lugger/` erreichbar. Die echte App mit Agenten, Rendering und
 Uploads braucht einen Server (siehe „Start (Docker)“), GitHub Pages kann nur statische Seiten ausliefern.

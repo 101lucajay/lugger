@@ -23,6 +23,7 @@ from .paths import STATIC_DIR, VIDEOS_DIR, video_dir
 from .publishers.platforms import enabled_platforms
 
 PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+USERNAME = os.environ.get("DASHBOARD_USER", "admin").strip().lower()
 COOKIE = "lugger_session"
 
 IN_PROGRESS_RESET = {"scripting": "queued", "voicing": "scripted", "sourcing": "voiced",
@@ -30,7 +31,7 @@ IN_PROGRESS_RESET = {"scripting": "queued", "voicing": "scripted", "sourcing": "
 
 
 def _token() -> str:
-    return hmac.new(PASSWORD.encode(), b"lugger-dashboard", hashlib.sha256).hexdigest()
+    return hmac.new(PASSWORD.encode(), f"lugger-dashboard|{USERNAME}".encode(), hashlib.sha256).hexdigest()
 
 
 def _authed(cookies) -> bool:
@@ -85,7 +86,9 @@ async def login_page():
 @app.post("/login")
 async def login(request: Request):
     form = await request.form()
-    if PASSWORD and hmac.compare_digest(str(form.get("password", "")), PASSWORD):
+    user_ok = hmac.compare_digest(str(form.get("username", "")).strip().lower(), USERNAME)
+    pass_ok = hmac.compare_digest(str(form.get("password", "")), PASSWORD)
+    if PASSWORD and user_ok and pass_ok:
         resp = RedirectResponse("/", status_code=303)
         resp.set_cookie(COOKIE, _token(), httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
         return resp

@@ -23,7 +23,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Demo-Seite bauen
-        run: python tools/build_demo.py _site/index.html --standalone
+        run: python tools/build_demo.py _build/demo.html --standalone
+      - name: Mit Benutzername und Passwort schützen
+        env:
+          DEMO_USERNAME: ${{ secrets.DEMO_USERNAME }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+        run: |
+          pip install --quiet cryptography
+          python tools/protect_page.py _build/demo.html _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
