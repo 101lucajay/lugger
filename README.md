@@ -6,21 +6,21 @@ Untertiteln und lädt sie nach deiner Freigabe auf **TikTok, Instagram Reels und
 
 Voreingestellte Branche: **Künstliche Intelligenz & Zukunftstechnologien** (im Dashboard änderbar).
 
-## Das Dashboard
+## Das Dashboard (Kommandozentrale)
 
-Die Startseite ist die **Produktionsstraße**: eine große Seitenansicht wie in einem Autowerk, nur dass hier Videos
-gebaut werden. Jedes Video fährt als Werkstück auf dem Fließband von Station zu Station und wird sichtbar
-zusammengesetzt: Idee → Plan → Skript → Tonspur → Filmmaterial → fertiges Video → Prüfung → Versand.
-Hinter dem Band arbeiten die Agenten (im Anzug, mit Sonnenbrille und Headset, Krawatte in Abteilungsfarbe).
-Am Ende liegt die Nebenhalle mit dem Automations-Werk, wo ein Roboter und zwei Industrie-Roboterarme deine
-Automatisierungen ausführen.
+Die Startseite ist eine dunkle **Kommandozentrale**. Oben stehen die Kennzahlen, darunter das **Agenten-Netzwerk**:
+Jeder Agent ist ein leuchtender Knoten mit Statuslicht, Fortschrittsring und seiner aktuellen Aufgabe. Die Knoten
+sind in Ablauf-Reihenfolge verbunden (Trend-Scout → Leitstand → Skript → Stimme → Material → Render → **Du**
+(Freigabe) → Upload → Cloud mit YouTube · TikTok · Instagram).
 
-- **Wischen/Ziehen** nach links und rechts (oder Trackpad, Pfeiltasten, die Pfeil-Knöpfe) bewegt dich die Straße entlang.
-  Die Höhe ist fest, es gibt kein Zoomen oder Drehen.
-- **Stations-Leiste** unter der Straße: springt direkt zu einer Station und zeigt deren Status.
-- **Live folgen**: Die Ansicht fährt automatisch zur Station, an der gerade gearbeitet wird.
-- Klick auf einen Agenten zeigt seine Details, Klick auf ein Werkstück öffnet das Video, und ein Klick auf die
-  Prüf-Station öffnet das nächste Video, das auf deine Freigabe wartet.
+Videos sind **Datenpakete**: Sie gleiten die Verbindungen entlang und kreisen um den Agenten, der gerade an ihnen
+arbeitet. Veröffentlichte Videos fliegen in die Cloud. Unten hängt der **Automator** mit allen Automatisierungen als
+kleinen Knoten; gestrichelte Linien zeigen, welches Ereignis eine Automatisierung auslöst. Die Ansicht ist fest
+(kein Scrollen oder Zoomen) und wird auf dem Handy senkrecht.
+
+Der **Video-Tracker** zeigt für jedes Video eine 8-Schritt-Fortschrittsleiste, den aktuellen Schritt, welcher Agent
+gerade was damit macht, Fehler oder Wartezeit auf deine Freigabe. Ein Klick öffnet das Video, ein Klick auf eine
+Station den Agenten, ein Klick auf „Freigabe“ das nächste Video, das du prüfen sollst.
 
 Darunter: Kennzahlen, offene Freigaben, die Crew, Automations-Läufe und ein Live-Feed.
 
@@ -84,7 +84,7 @@ docker compose up -d --build
 Danach das Dashboard öffnen: **http://localhost:8000** (auf einem Server: `http://SERVER-IP:8000`).
 Videos, Datenbank und Einstellungen liegen in `./data`.
 
-> Auf einem öffentlichen Server unbedingt `DASHBOARD_PASSWORD` setzen und am besten einen
+> Auf einem öffentlichen Server unbedingt `DASHBOARD_USER` und `DASHBOARD_PASSWORD` setzen und am besten einen
 > Reverse-Proxy mit HTTPS davorschalten (z. B. Caddy: `caddy reverse-proxy --from deine-domain.de --to localhost:8000`).
 
 ### Ohne Docker
@@ -157,6 +157,11 @@ und veröffentlicht sie auf GitHub Pages. Einmalig einrichten:
 2. Bei einem **privaten** Repo braucht Pages einen bezahlten GitHub-Plan (z. B. Pro). Alternativ das Repo öffentlich machen.
 3. **Settings → General → Default branch** auf `main` stellen.
 4. Unter **Actions → „Demo auf GitHub Pages“ → Run workflow** einmal manuell starten (danach automatisch bei jedem Push).
+
+**Login für die Seite:** Die Demo wird beim Veröffentlichen mit AES-256 verschlüsselt und ist nur mit
+Benutzername und Passwort zu öffnen (auch im Quelltext steht nichts Lesbares). Die Zugangsdaten legst du als
+Secrets an: **Settings → Secrets and variables → Actions → New repository secret**, einmal `DEMO_USERNAME` und
+einmal `DEMO_PASSWORD` (mindestens 10 Zeichen). Ohne diese Secrets bricht der Workflow ab und veröffentlicht nichts.
 
 Die Demo ist dann unter `https://<dein-name>.github.io/lugger/` erreichbar. Die echte App mit Agenten, Rendering und
 Uploads braucht einen Server (siehe „Start (Docker)“), GitHub Pages kann nur statische Seiten ausliefern.

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,9 +12,10 @@
       <div class="brand-mark"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg></div>
       <div><div class="brand-name">Lugger</div><div class="brand-sub">Agenten-Zentrale</div></div>
     </div>
-    <input class="input" type="password" name="password" placeholder="Passwort" autofocus required>
+    <input class="input" type="text" name="username" placeholder="Benutzername" autocomplete="username" autofocus required>
+    <input class="input" type="password" name="password" placeholder="Passwort" autocomplete="current-password" required>
     <button class="btn primary" type="submit" style="justify-content:center">Anmelden</button>
-    <p class="err" id="err" hidden>Das Passwort stimmt nicht.</p>
+    <p class="err" id="err" hidden>Benutzername oder Passwort stimmt nicht.</p>
   </form>
   <script>if (location.search.includes("error")) document.getElementById("err").hidden = false;</script>
 </body>
